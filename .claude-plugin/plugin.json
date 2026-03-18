@@ -1,0 +1,7 @@
+{
+  "name": "memex",
+  "description": "Zettelkasten-based agent memory system with bidirectional links",
+  "version": "0.1.0",
+  "license": "MIT",
+  "keywords": ["memory", "zettelkasten", "agent", "knowledge-management"]
+}
