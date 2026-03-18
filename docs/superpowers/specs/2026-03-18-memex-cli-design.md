@@ -58,6 +58,7 @@ CLI 是纯数据层，无 LLM 依赖。所有 LLM 智能在 skill 层，用 agen
 ---
 title: JWT 迁移的坑
 created: 2026-03-18
+modified: 2026-03-18
 source: retro
 ---
 
@@ -141,7 +142,7 @@ LLM 拿到摘要后自己决定 `read` 哪些卡片。
 
 分析卡片间的链接关系。
 
-**无参时：** 返回全局 link graph 统计 — 每张卡片的 outbound/inbound link 数量，标记 orphan（0 inbound）和 hub（inbound > 阈值）。
+**无参时：** 返回全局 link graph 统计 — 每张卡片的 outbound/inbound link 数量，标记 orphan（0 inbound）和 hub（inbound >= 10）。
 
 **输出格式示例：**
 ```
@@ -246,13 +247,14 @@ Flow 描述：
 
 ```dot
 digraph organize {
-    "Scan all cards via search" -> "Detect orphans (no inbound links)";
-    "Detect orphans (no inbound links)" -> "For each orphan: search related cards";
-    "For each orphan: search related cards" -> "LLM decides: append links / mark stale / leave alone";
-    "Scan all cards via search" -> "Detect hubs (too many inbound links)";
-    "Detect hubs (too many inbound links)" -> "LLM decides: split into smaller cards or leave alone";
-    "Scan all cards via search" -> "Detect contradictions";
-    "Detect contradictions" -> "LLM decides: merge / archive old card";
+    "memex links (global graph stats)" -> "Detect orphans (in=0)";
+    "Detect orphans (in=0)" -> "For each orphan: memex read + search related";
+    "For each orphan: memex read + search related" -> "LLM decides: append links / mark stale / leave alone";
+    "memex links (global graph stats)" -> "Detect hubs (in >= 10)";
+    "Detect hubs (in >= 10)" -> "LLM decides: split into smaller cards or leave alone";
+    "memex links (global graph stats)" -> "Filter by modified since last run";
+    "Filter by modified since last run" -> "memex read changed cards + neighbors";
+    "memex read changed cards + neighbors" -> "LLM decides: merge / archive old card";
 }
 ```
 
@@ -266,7 +268,7 @@ digraph organize {
 - Merge：将源卡片内容追加到目标卡片，源卡片移到 `~/.memex/archive/`
 - Archive：将过时卡片移到 `~/.memex/archive/`
 - Organize 通过 `memex links`（无参）获取全局 link graph 统计，识别 orphan 和 hub
-- 只处理自上次 organize 以来有 `modified` 变化的卡片及其 neighbors（增量策略）
+- 增量策略：organize 将上次运行时间写入 `~/.memex/.last-organize`，下次只处理 `modified` 晚于该时间的卡片及其 neighbors
 - 通过 `memex archive` 移动过时卡片，不直接操作文件系统
 
 ## Integration
