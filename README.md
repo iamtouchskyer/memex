@@ -2,6 +2,8 @@
 
 A Zettelkasten-based memory system for AI agents. No vector database, no embeddings — just markdown files with bidirectional links.
 
+![memex timeline view](screenshot.png)
+
 ## How it works
 
 ```
@@ -83,6 +85,7 @@ memex write new-card < card.md    # write card (stdin)
 memex links                       # global link graph stats
 memex links jwt-migration         # inbound/outbound links for a card
 memex archive old-card            # move to ~/.memex/archive/
+memex serve                       # browse cards in a visual timeline
 ```
 
 ## Skills
