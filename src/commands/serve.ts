@@ -129,7 +129,7 @@ export async function serveCommand(port: number): Promise<void> {
 
 function getHTML(): string {
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="forest">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -151,6 +151,48 @@ function getHTML(): string {
   --purple: #af52de;
   --spring: cubic-bezier(0.34,1.2,0.64,1);
   --sidebar-w: 280px;
+  --wallpaper: linear-gradient(160deg, #b8d4c0 0%, #c8d4a8 40%, #d0c8a8 70%, #c0d0b8 100%);
+  --wallpaper-glow-1: rgba(255,255,240,0.25);
+  --wallpaper-glow-2: rgba(140,180,120,0.25);
+}
+
+/* Themes */
+[data-theme="sonoma"] {
+  --wallpaper: linear-gradient(160deg, #b8cfe0 0%, #c5bedd 40%, #d4c5cc 70%, #c8d4c8 100%);
+  --wallpaper-glow-1: rgba(255,255,255,0.25);
+  --wallpaper-glow-2: rgba(180,160,200,0.3);
+  --surface: rgba(255,255,255,0.72);
+  --surface-2: rgba(255,255,255,0.45);
+  --menubar-bg: rgba(236,236,236,0.72);
+}
+[data-theme="forest"] {
+  --wallpaper: linear-gradient(160deg, #b8d4c0 0%, #c8d4a8 40%, #d0c8a8 70%, #c0d0b8 100%);
+  --wallpaper-glow-1: rgba(255,255,240,0.25);
+  --wallpaper-glow-2: rgba(140,180,120,0.25);
+  --surface: rgba(255,255,255,0.70);
+  --surface-2: rgba(255,255,255,0.44);
+  --menubar-bg: rgba(228,236,224,0.72);
+}
+[data-theme="sunset"] {
+  --wallpaper: linear-gradient(160deg, #e8c4a0 0%, #d4a8b8 40%, #c4a8d8 70%, #d4b8c0 100%);
+  --wallpaper-glow-1: rgba(255,240,220,0.3);
+  --wallpaper-glow-2: rgba(200,140,160,0.3);
+  --surface: rgba(255,255,255,0.68);
+  --surface-2: rgba(255,255,255,0.42);
+  --menubar-bg: rgba(240,228,220,0.72);
+}
+[data-theme="midnight"] {
+  --wallpaper: linear-gradient(160deg, #0d1117 0%, #1a1f2e 40%, #161d2e 70%, #0f1520 100%);
+  --wallpaper-glow-1: rgba(60,100,180,0.15);
+  --wallpaper-glow-2: rgba(80,40,120,0.2);
+  --surface: rgba(40,44,52,0.75);
+  --surface-2: rgba(50,55,65,0.55);
+  --menubar-bg: rgba(20,22,28,0.82);
+  --border: rgba(255,255,255,0.1);
+  --border-strong: rgba(255,255,255,0.18);
+  --label: rgba(255,255,255,0.92);
+  --label-2: rgba(255,255,255,0.55);
+  --label-3: rgba(255,255,255,0.32);
 }
 
 html, body {
@@ -167,15 +209,16 @@ body::-webkit-scrollbar { display: none; }
 /* === Wallpaper === */
 .wallpaper {
   position: fixed; inset: 0; z-index: 0;
-  background: linear-gradient(160deg, #b8cfe0 0%, #c5bedd 40%, #d4c5cc 70%, #c8d4c8 100%);
+  background: var(--wallpaper);
   background-size: 200% 200%;
   animation: wallpaperBreathe 12s ease-in-out infinite;
+  transition: background 0.6s ease;
 }
 .wallpaper::after {
   content: '';
   position: absolute; inset: 0;
-  background: radial-gradient(ellipse at 30% 20%, rgba(255,255,255,0.25) 0%, transparent 60%),
-              radial-gradient(ellipse at 80% 80%, rgba(180,160,200,0.3) 0%, transparent 50%);
+  background: radial-gradient(ellipse at 30% 20%, var(--wallpaper-glow-1) 0%, transparent 60%),
+              radial-gradient(ellipse at 80% 80%, var(--wallpaper-glow-2) 0%, transparent 50%);
   animation: glowBreathe 10s ease-in-out infinite alternate;
 }
 @keyframes wallpaperBreathe {
@@ -276,6 +319,9 @@ body::-webkit-scrollbar { display: none; }
   display: flex;
   height: calc(100vh - 44px);
   margin-top: 44px;
+  max-width: 1060px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 /* === Sidebar === */
@@ -614,6 +660,56 @@ body::-webkit-scrollbar { display: none; }
   50% { opacity: 1; }
 }
 
+/* === Theme picker === */
+.theme-btn {
+  position: fixed; bottom: 28px; right: 28px;
+  width: 36px; height: 36px; border-radius: 50%;
+  background: var(--surface);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.14);
+  cursor: pointer;
+  z-index: 200;
+  display: flex; align-items: center; justify-content: center;
+  transition: transform 0.2s var(--spring), box-shadow 0.2s ease;
+}
+.theme-btn:hover {
+  transform: scale(1.08);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.18);
+}
+.theme-btn svg { width: 18px; height: 18px; color: var(--label-2); }
+
+.theme-popover {
+  position: fixed; bottom: 72px; right: 28px;
+  border-radius: 14px;
+  background: var(--surface);
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  border: 0.5px solid var(--border-strong);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.16);
+  padding: 10px;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+  z-index: 200;
+  opacity: 0;
+  transform: translateY(8px) scale(0.95);
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.25s var(--spring);
+}
+.theme-popover.open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+.theme-tile {
+  width: 64px; height: 44px; border-radius: 8px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: border-color 0.15s ease, transform 0.15s var(--spring);
+}
+.theme-tile:hover { transform: scale(1.06); }
+.theme-tile.active { border-color: var(--blue); }
+
 @media (max-width: 700px) {
   .sidebar { display: none; }
   .layout { display: block; }
@@ -648,6 +744,48 @@ body::-webkit-scrollbar { display: none; }
   </aside>
   <div class="main" id="timeline"></div>
 </div>
+
+<!-- Theme picker -->
+<button class="theme-btn" id="theme-btn" aria-label="Change theme">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+</button>
+<div class="theme-popover" id="theme-popover">
+  <div class="theme-tile" data-theme="sonoma" title="Sonoma" style="background:linear-gradient(160deg,#b8cfe0 0%,#c5bedd 40%,#d4c5cc 70%,#c8d4c8 100%)"></div>
+  <div class="theme-tile" data-theme="forest" title="Forest" style="background:linear-gradient(160deg,#b8d4c0 0%,#c8d4a8 40%,#d0c8a8 70%,#c0d0b8 100%)"></div>
+  <div class="theme-tile" data-theme="sunset" title="Sunset" style="background:linear-gradient(160deg,#e8c4a0 0%,#d4a8b8 40%,#c4a8d8 70%,#d4b8c0 100%)"></div>
+  <div class="theme-tile" data-theme="midnight" title="Midnight" style="background:linear-gradient(160deg,#0d1117 0%,#1a1f2e 40%,#161d2e 70%,#0f1520 100%)"></div>
+</div>
+
+<script>
+// Theme picker
+(function() {
+  const btn = document.getElementById('theme-btn');
+  const pop = document.getElementById('theme-popover');
+  const tiles = pop.querySelectorAll('.theme-tile');
+  const saved = localStorage.getItem('memex-theme') || 'forest';
+  document.documentElement.setAttribute('data-theme', saved);
+  function markActive() {
+    const cur = document.documentElement.getAttribute('data-theme');
+    tiles.forEach(t => t.classList.toggle('active', t.dataset.theme === cur));
+  }
+  markActive();
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    pop.classList.toggle('open');
+  });
+  tiles.forEach(t => {
+    t.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const theme = t.dataset.theme;
+      document.documentElement.setAttribute('data-theme', theme);
+      localStorage.setItem('memex-theme', theme);
+      markActive();
+      pop.classList.remove('open');
+    });
+  });
+  document.addEventListener('click', () => pop.classList.remove('open'));
+})();
+</script>
 
 <script>
 (function() {
