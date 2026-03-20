@@ -158,16 +158,16 @@ function getHTML(): string {
 
 /* Themes — apply to window, not wallpaper */
 [data-theme="sonoma"] {
-  --win-bg: linear-gradient(160deg, #e8eaf0 0%, #e4e0ec 40%, #ece4e8 70%, #e4ece4 100%);
+  --win-bg: #f5f5f7;
 }
 [data-theme="forest"] {
-  --win-bg: linear-gradient(160deg, #e4ece0 0%, #e8ecd4 40%, #ece8d4 70%, #e0ece0 100%);
+  --win-bg: #f3f6f0;
 }
 [data-theme="sunset"] {
-  --win-bg: linear-gradient(160deg, #f0e4d8 0%, #ece0e4 40%, #e4e0ec 70%, #ece0e4 100%);
+  --win-bg: #f8f4f0;
 }
 [data-theme="midnight"] {
-  --win-bg: linear-gradient(160deg, #1a1d24 0%, #222632 40%, #1e2430 70%, #181c24 100%);
+  --win-bg: #1c1c1e;
   --border: rgba(255,255,255,0.1);
   --border-strong: rgba(255,255,255,0.18);
   --label: rgba(255,255,255,0.92);
@@ -215,7 +215,7 @@ body::-webkit-scrollbar { display: none; }
   margin: 24px auto;
   height: calc(100vh - 48px);
   border-radius: 14px;
-  background: var(--win-bg, linear-gradient(160deg, #e4ece0 0%, #e8ecd4 40%, #ece8d4 70%, #e0ece0 100%));
+  background: var(--win-bg, #f3f6f0);
   border: 1px solid rgba(0,0,0,0.08);
   box-shadow: 0 8px 40px rgba(0,0,0,0.12);
   overflow: hidden;
@@ -737,10 +737,10 @@ body::-webkit-scrollbar { display: none; }
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
 </button>
 <div class="theme-popover" id="theme-popover">
-  <div class="theme-tile" data-theme="sonoma" title="Sonoma" style="background:linear-gradient(160deg,#e8eaf0 0%,#e4e0ec 40%,#ece4e8 70%,#e4ece4 100%)"></div>
-  <div class="theme-tile" data-theme="forest" title="Forest" style="background:linear-gradient(160deg,#e4ece0 0%,#e8ecd4 40%,#ece8d4 70%,#e0ece0 100%)"></div>
-  <div class="theme-tile" data-theme="sunset" title="Sunset" style="background:linear-gradient(160deg,#f0e4d8 0%,#ece0e4 40%,#e4e0ec 70%,#ece0e4 100%)"></div>
-  <div class="theme-tile" data-theme="midnight" title="Midnight" style="background:linear-gradient(160deg,#1a1d24 0%,#222632 40%,#1e2430 70%,#181c24 100%)"></div>
+  <div class="theme-tile" data-theme="sonoma" title="Sonoma" style="background:#f5f5f7"></div>
+  <div class="theme-tile" data-theme="forest" title="Forest" style="background:#f3f6f0"></div>
+  <div class="theme-tile" data-theme="sunset" title="Sunset" style="background:#f8f4f0"></div>
+  <div class="theme-tile" data-theme="midnight" title="Midnight" style="background:#1c1c1e"></div>
 </div>
 
 <script>
