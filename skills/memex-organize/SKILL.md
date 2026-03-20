@@ -28,6 +28,7 @@ digraph organize {
     "memex links (global graph stats)" -> "Filter by modified since last run";
     "Filter by modified since last run" -> "memex read changed cards + neighbors";
     "memex read changed cards + neighbors" -> "LLM decides: merge / archive old card";
+    "All checks done" -> "Rebuild keyword index";
 }
 ```
 
@@ -43,6 +44,42 @@ digraph organize {
    - `memex read` the card and its neighbors (linked cards)
    - Check for contradictions or outdated information
    - Decide: merge, archive, or leave alone
+5. **Rebuild keyword index** (always, as last step)
+
+## Keyword Index Maintenance
+
+The keyword index (`index` card) is a curated concept → card mapping, inspired by Luhmann's Schlagwortregister. It is the primary entry point for the recall skill.
+
+After completing all checks, rebuild the index:
+
+1. `memex search` (no args) to get all card slugs and titles
+2. `memex read` each card (or at least new/modified ones)
+3. Group cards by concept/topic — use your judgment to create meaningful categories
+4. Write the index card:
+
+```markdown
+---
+title: Keyword Index
+created: <original creation date>
+source: organize
+---
+
+## <Concept Category 1>
+- [[slug-a]] — one-line description
+- [[slug-b]] — one-line description
+
+## <Concept Category 2>
+- [[slug-c]] — one-line description
+```
+
+Rules for the index:
+- Each card should appear under 1-2 categories (not more)
+- Categories should be meaningful concepts, not arbitrary groupings
+- Descriptions should be one line, explaining what the card is about (not just the title)
+- Archived cards must be removed from the index
+- New cards must be added
+
+Use `memex write index` to save the index.
 
 ## Incremental Strategy
 
