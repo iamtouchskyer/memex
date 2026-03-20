@@ -209,17 +209,11 @@ body::-webkit-scrollbar { display: none; }
 /* === Wallpaper === */
 .wallpaper {
   position: fixed; inset: 0; z-index: 0;
-  background: var(--wallpaper);
-  background-size: 200% 200%;
-  animation: wallpaperBreathe 12s ease-in-out infinite;
+  background: #fff;
   transition: background 0.6s ease;
 }
 .wallpaper::after {
-  content: '';
-  position: absolute; inset: 0;
-  background: radial-gradient(ellipse at 30% 20%, var(--wallpaper-glow-1) 0%, transparent 60%),
-              radial-gradient(ellipse at 80% 80%, var(--wallpaper-glow-2) 0%, transparent 50%);
-  animation: glowBreathe 10s ease-in-out infinite alternate;
+  display: none;
 }
 @keyframes wallpaperBreathe {
   0%   { background-position: 0% 0%; }
@@ -238,21 +232,21 @@ body::-webkit-scrollbar { display: none; }
   position: relative;
   z-index: 1;
   max-width: 1060px;
-  margin: 24px auto;
-  height: calc(100vh - 48px);
-  border-radius: 12px;
+  margin: 0 auto;
+  height: 100vh;
+  border-radius: 0;
   background: #fff;
-  -webkit-backdrop-filter: blur(40px) saturate(180%);
-  border: 1px solid var(--border-strong);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.1);
+  border: none;
+  box-shadow: none;
   overflow: hidden;
   display: flex;
   flex-direction: column;
 }
+[data-theme="midnight"] .wallpaper { background: #1e1e1e; }
 [data-theme="midnight"] .window {
   background: #1e1e1e;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3);
-  border-color: rgba(255,255,255,0.12);
+  box-shadow: none;
+  border-color: transparent;
 }
 
 /* === Title bar === */
