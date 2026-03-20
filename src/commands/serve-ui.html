@@ -276,7 +276,7 @@ body::-webkit-scrollbar { display: none; }
   opacity: 1;
 }
 .spark-bar.empty {
-  background: rgba(0,0,0,0.05);
+  background: rgba(0,0,0,0.035);
   opacity: 1;
 }
 [data-theme="midnight"] .spark-bar.empty {
@@ -747,8 +747,17 @@ body::-webkit-scrollbar { display: none; }
       });
     });
 
+    const activeDays = Object.keys(counts).sort();
     const today = new Date();
-    const days = 84; // 12 weeks
+
+    // Adaptive window: at least 30 days, expand to cover all data, cap at 90
+    let days = 30;
+    if (activeDays.length > 0) {
+      const earliest = new Date(activeDays[0]);
+      const span = Math.ceil((today.getTime() - earliest.getTime()) / 86400000) + 1;
+      days = Math.min(90, Math.max(30, span + 7));
+    }
+
     const start = new Date(today);
     start.setDate(start.getDate() - days + 1);
 
@@ -764,7 +773,7 @@ body::-webkit-scrollbar { display: none; }
 
     let html = '<div class="spark-chart">';
     bars.forEach(b => {
-      const pct = b.count > 0 ? Math.max(8, (b.count / maxCount) * 100) : 4;
+      const pct = b.count > 0 ? Math.max(12, (b.count / maxCount) * 100) : 3;
       const cls = b.count === 0 ? 'spark-bar empty' : 'spark-bar';
       const title = b.date + ': ' + b.count + ' activities';
       html += '<div class="' + cls + '" style="height:' + pct + '%" title="' + title + '"></div>';
