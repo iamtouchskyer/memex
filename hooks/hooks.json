@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "memex read index 2>/dev/null || echo 'No memex index yet. Run /memex-organize to create one.'"
+          }
+        ]
+      }
+    ]
+  }
+}
