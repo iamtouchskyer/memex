@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo '## Memex Memory System Active' && echo 'You have a Zettelkasten memory. When the user gives you a task, check if any cards below are relevant. If so, run `memex read <slug>` to get full context before starting.' && echo '' && memex read index 2>/dev/null || echo 'No memex index yet. Run /memex-organize to create one.'"
+            "command": "echo '## Memex Memory System Active\n\n### Recall\nYou have a Zettelkasten memory. When the user gives you a task, check if any cards below are relevant. If so, run `memex read <slug>` to get full context before starting.\n\n### Retro\nAfter completing a task, reflect: did you learn something worth remembering? If yes, write atomic cards using `memex write <slug>` (pipe via stdin). Before writing, `memex search` for existing cards to avoid duplicates. Link related cards with [[slug]] in prose. Card format:\n```\n---\ntitle: <title>\ncreated: <YYYY-MM-DD>\nsource: retro\n---\n<insight in own words, with [[links]] explaining relationships>\n```\n\n### Index' && memex read index 2>/dev/null || echo 'No memex index yet. Run /memex-organize to create one.'"
           }
         ]
       }
