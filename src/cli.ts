@@ -27,10 +27,11 @@ program.name("memex").description("Zettelkasten agent memory CLI").version("0.1.
 
 program
   .command("search [query]")
-  .description("Full-text search cards, or list all if no query")
-  .action(async (query?: string) => {
+  .description("Full-text search cards (body only), or list all if no query")
+  .option("-l, --limit <n>", "Max results to return", "10")
+  .action(async (query: string | undefined, opts: { limit: string }) => {
     const store = getStore();
-    const result = await searchCommand(store, query);
+    const result = await searchCommand(store, query, { limit: parseInt(opts.limit) });
     if (result.output) process.stdout.write(result.output + "\n");
     process.exit(result.exitCode);
   });
