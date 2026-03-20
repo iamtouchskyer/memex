@@ -47,7 +47,12 @@ export async function serveCommand(port: number): Promise<void> {
             };
           })
         );
-        result.sort((a, b) => b.created.localeCompare(a.created));
+        // Index card always first, then by date descending
+        result.sort((a, b) => {
+          if (a.slug === "index") return -1;
+          if (b.slug === "index") return 1;
+          return b.created.localeCompare(a.created);
+        });
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(result));
         return;
