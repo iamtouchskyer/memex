@@ -241,8 +241,7 @@ body::-webkit-scrollbar { display: none; }
   margin: 24px auto;
   height: calc(100vh - 48px);
   border-radius: 12px;
-  background: var(--surface);
-  backdrop-filter: blur(40px) saturate(180%);
+  background: #fff;
   -webkit-backdrop-filter: blur(40px) saturate(180%);
   border: 1px solid var(--border-strong);
   box-shadow: 0 8px 32px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.1);
@@ -251,6 +250,7 @@ body::-webkit-scrollbar { display: none; }
   flex-direction: column;
 }
 [data-theme="midnight"] .window {
+  background: #1e1e1e;
   box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3);
   border-color: rgba(255,255,255,0.12);
 }
