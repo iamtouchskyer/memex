@@ -22,7 +22,7 @@ async function setup(cards: Record<string, string> = {}) {
   }
 
   const store = new CardStore(cardsDir, archiveDir);
-  const server = createMemexServer(store);
+  const server = createMemexServer(store, tmpDir);
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
   client = new Client({ name: "test-client", version: "1.0.0" });
@@ -37,11 +37,11 @@ async function teardown() {
 describe("MCP server", () => {
   afterEach(teardown);
 
-  it("lists all 5 tools", async () => {
+  it("lists all 6 tools", async () => {
     await setup();
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
-    expect(names).toEqual(["memex_archive", "memex_links", "memex_read", "memex_search", "memex_write"]);
+    expect(names).toEqual(["memex_archive", "memex_links", "memex_read", "memex_search", "memex_sync", "memex_write"]);
   });
 
   it("memex_search lists all cards when no query", async () => {
@@ -119,5 +119,13 @@ describe("MCP server", () => {
 
     const readResult = await client.callTool({ name: "memex_read", arguments: { slug: "old-card" } });
     expect(readResult.isError).toBe(true);
+  });
+
+  it("memex_sync status shows not configured", async () => {
+    await setup();
+    const result = await client.callTool({ name: "memex_sync", arguments: { action: "status" } });
+    expect(result.isError).toBeFalsy();
+    const text = (result.content as Array<{ text: string }>)[0].text;
+    expect(text).toContain("not configured");
   });
 });

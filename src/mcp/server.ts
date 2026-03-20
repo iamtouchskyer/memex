@@ -5,9 +5,10 @@ import { readCommand } from "../commands/read.js";
 import { writeCommand } from "../commands/write.js";
 import { linksCommand } from "../commands/links.js";
 import { archiveCommand } from "../commands/archive.js";
+import { syncCommand } from "../commands/sync.js";
 import { z } from "zod";
 
-export function createMemexServer(store: CardStore): McpServer {
+export function createMemexServer(store: CardStore, home?: string): McpServer {
   const server = new McpServer({
     name: "memex",
     version: "0.1.2",
@@ -73,6 +74,26 @@ export function createMemexServer(store: CardStore): McpServer {
     }
     return { content: [{ type: "text" as const, text: `Card '${slug}' archived.` }] };
   });
+
+  if (home) {
+    server.registerTool("memex_sync", {
+      description: "Sync memory cards across devices via git. Call after writing cards to keep them in sync. Use action 'status' to check sync state, 'auto_on'/'auto_off' to toggle auto-sync.",
+      inputSchema: z.object({
+        action: z.enum(["sync", "status", "auto_on", "auto_off"]).optional().describe("Action to perform (default: sync)"),
+      }),
+    }, async ({ action }) => {
+      const a = action || "sync";
+      const opts = {
+        status: a === "status",
+        auto: a === "auto_on" ? "on" : a === "auto_off" ? "off" : undefined,
+      };
+      const result = await syncCommand(home, opts);
+      if (!result.success) {
+        return { content: [{ type: "text" as const, text: result.error! }], isError: true };
+      }
+      return { content: [{ type: "text" as const, text: result.output || "Synced." }] };
+    });
+  }
 
   return server;
 }

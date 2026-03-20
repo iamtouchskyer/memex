@@ -138,8 +138,9 @@ program
   .action(async () => {
     const { createMemexServer } = await import("./mcp/server.js");
     const { StdioServerTransport } = await import("@modelcontextprotocol/sdk/server/stdio.js");
+    const home = process.env.MEMEX_HOME || join(homedir(), ".memex");
     const store = getStore();
-    const server = createMemexServer(store);
+    const server = createMemexServer(store, home);
     const transport = new StdioServerTransport();
     await server.connect(transport);
   });
