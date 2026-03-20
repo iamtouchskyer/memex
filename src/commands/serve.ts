@@ -144,15 +144,30 @@ export async function serveCommand(port: number): Promise<void> {
     }
   });
 
-  server.listen(port, () => {
-    const url = `http://localhost:${port}`;
-    console.log(`memex is running at ${url}`);
-    // Auto-open browser (skip in test/CI environments)
-    if (!process.env.MEMEX_NO_OPEN) {
-      const cmd = process.platform === 'darwin' ? `open ${url}`
-        : process.platform === 'win32' ? `start ${url}`
-        : `xdg-open ${url}`;
-      exec(cmd);
-    }
-  });
+  const maxRetries = 10;
+
+  const tryListen = (currentPort: number, attempt: number): void => {
+    server.once("error", (err: NodeJS.ErrnoException) => {
+      if (err.code === "EADDRINUSE" && attempt < maxRetries) {
+        console.log(`Port ${currentPort} in use, trying ${currentPort + 1}...`);
+        tryListen(currentPort + 1, attempt + 1);
+      } else {
+        console.error(`Failed to start server: ${err.message}`);
+        process.exit(1);
+      }
+    });
+
+    server.listen(currentPort, () => {
+      const url = `http://localhost:${currentPort}`;
+      console.log(`memex is running at ${url}`);
+      if (!process.env.MEMEX_NO_OPEN) {
+        const cmd = process.platform === "darwin" ? `open ${url}`
+          : process.platform === "win32" ? `start ${url}`
+          : `xdg-open ${url}`;
+        exec(cmd);
+      }
+    });
+  };
+
+  tryListen(port, 0);
 }
