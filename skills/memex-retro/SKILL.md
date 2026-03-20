@@ -1,5 +1,5 @@
 ---
-name: memex-retro
+name: retro
 description: After completing a task, distill insights into Zettelkasten cards. Use at the end of any task that produced learnings worth remembering.
 ---
 
