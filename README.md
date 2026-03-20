@@ -1,159 +1,112 @@
 # memex
 
-A Zettelkasten-based memory system for AI agents. No vector database, no embeddings — just markdown files with bidirectional links.
+Persistent memory for AI coding agents. Your agent remembers what it learned across sessions.
 
 ![memex timeline view](screenshot.png)
 
-## How it works
+## What it does
+
+Every time your AI agent finishes a task, it saves insights as atomic knowledge cards with `[[bidirectional links]]`. Next session, it recalls relevant cards before starting work — building on what it already knows instead of starting from scratch.
 
 ```
-Agent completes task → retro skill distills insights into atomic cards
-                       ↓
-Agent starts new task → recall skill searches cards, follows [[links]]
-                       ↓
-Cron runs periodically → organize skill maintains card network health
+Session 1: Agent fixes auth bug → saves insight about JWT revocation
+Session 2: Agent works on session management → recalls JWT card, builds on prior knowledge
+Session 3: Agent organizes card network → detects orphans, rebuilds keyword index
 ```
 
-The LLM **is** the semantic search engine. `[[Bidirectional links]]` **are** the graph traversal engine. Together they replace vector databases entirely.
-
-### The Zettelkasten method, automated
-
-Niklas Luhmann built a 90,000-card knowledge system that produced 70 books. His method:
-
-1. **Atomic notes** — one idea per card
-2. **Write in your own words** — forces understanding
-3. **Link with context** — "this relates to [[X]] because..."
-4. **Keyword index** — curated entry points, not tags
-
-memex gives this to AI agents. The retro skill writes cards like Luhmann wrote notes. The recall skill navigates them like Luhmann pulled cards from his box. The organize skill maintains the network like Luhmann reviewed his collection.
-
-## Architecture
-
-```
-┌──────────┐  ┌──────────┐  ┌──────────┐
-│ Claude   │  │ Python   │  │ Human    │
-│ Code     │  │ Agent    │  │ (CLI /   │
-│ (skill)  │  │ (subprocess)│ Obsidian)│
-└────┬─────┘  └────┬─────┘  └────┬─────┘
-     └──────┬──────┴──────┬──────┘
-            │             │
-     ┌──────▼──────┐      │
-     │  memex CLI  │◄─────┘
-     │  (pure data │
-     │   layer)    │
-     └──────┬──────┘
-            │
-     ┌──────▼──────┐
-     │ ~/.memex/   │
-     │ cards/*.md  │
-     └─────────────┘
-```
-
-**CLI** = pure data layer (search/read/write/links/archive). Zero LLM dependency.
-
-**Skills** = intelligence layer. Uses the agent's own LLM to search, write, and organize cards.
-
-**Storage** = flat markdown files. Open them in Obsidian, edit with vim, grep from terminal. Your memory is never locked in.
+No vector database, no embeddings — just markdown files your agent (and you) can read.
 
 ## Install
 
-In Claude Code, run:
+### Claude Code (best experience)
 
 ```bash
 /plugin marketplace add iamtouchskyer/memex
 /plugin install memex@memex
 ```
 
-On next session start, the plugin will detect the CLI is missing and prompt you to install it:
+Gives you auto-recall on session start, 3 slash commands (`/memex-recall`, `/memex-retro`, `/memex-organize`), and a SessionStart hook that injects your knowledge index.
+
+### VS Code / GitHub Copilot
+
+Search "memex" in the [MCP Registry](https://registry.modelcontextprotocol.io) and click **Install in VS Code**, or run:
 
 ```bash
-npm install -g @touchskyer/memex
+code --add-mcp '{"name":"memex","command":"npx","args":["-y","@touchskyer/memex","mcp"]}'
 ```
 
-That's it. After restart you'll have:
-- 3 skills: `/memex-recall`, `/memex-retro`, `/memex-organize`
-- Auto-recall: keyword index injected into every new session
-- Auto-retro: LLM writes memory cards after completing tasks
+### Cursor
 
-## CLI
+Add to `.cursor/mcp.json`:
 
-```bash
-memex search "JWT revocation"     # body-only search, top 10 results
-memex search                      # list all cards
-memex read jwt-migration          # full card content
-memex write new-card < card.md    # write card (stdin)
-memex links                       # global link graph stats
-memex links jwt-migration         # inbound/outbound links for a card
-memex archive old-card            # move to ~/.memex/archive/
-memex serve                       # browse cards in a visual timeline
-memex sync --init <repo-url>      # setup sync with your git repo
-memex sync                        # push + pull
-memex sync --status               # check sync state
-memex sync --auto on              # auto-sync after every write
+```json
+{
+  "mcpServers": {
+    "memex": { "command": "npx", "args": ["-y", "@touchskyer/memex", "mcp"] }
+  }
+}
 ```
 
-## Sync
+### Windsurf / Other MCP clients
 
-Sync cards across devices via git:
+Same pattern — add memex as an MCP server with command `npx` and args `["-y", "@touchskyer/memex", "mcp"]`.
+
+### Codex
 
 ```bash
-# Option A: provide your own repo
+npm i -g @touchskyer/memex
+```
+
+Then add to your project's `AGENTS.md`:
+
+```markdown
+## Memory
+
+You have a Zettelkasten memory via the `memex` CLI.
+- Before a task: `memex search <keyword>`, then `memex read <slug>` for context
+- After a task: `memex write <slug>` to save insights (pipe content via stdin)
+```
+
+## Browse your memory
+
+```bash
+memex serve
+```
+
+Opens a visual timeline of all your cards at `localhost:3939`.
+
+## Sync across devices
+
+```bash
 memex sync --init git@github.com:you/memex-cards.git
-
-# Option B: auto-create private repo via gh CLI
-memex sync --init
-
-# Sync manually
-memex sync
-
-# Or enable auto-sync (syncs after every write/archive)
 memex sync --auto on
 ```
 
-Cards are plain markdown — git handles merging, history, and conflict resolution natively.
+Cards are plain markdown — git handles merging and history.
 
-## Skills
+## CLI reference
 
-| Skill | When | What it does |
-|-------|------|-------------|
-| `/memex-recall` | Task start | Reads keyword index → targeted card reads → follows [[links]] |
-| `/memex-retro` | Task end | Distills insights → dedup check → writes atomic cards with [[links]] |
-| `/memex-organize` | Periodic | Detects orphans/hubs → fixes links → rebuilds keyword index |
-
-A **SessionStart hook** auto-injects the keyword index into every new conversation.
-
-## Card format
-
-```markdown
----
-title: JWT revocation needs a blacklist
-created: 2026-03-18
-source: retro
----
-
-Stateless tokens can't be revoked. The only workaround is maintaining
-a blacklist of revoked token IDs — which reintroduces state.
-
-This is the fundamental tension in [[stateless-auth]]: moving state to
-the client means the server loses control. We used [[redis-session-store]]
-as the blacklist backend, which works but defeats the purpose of going
-stateless in the first place.
+```bash
+memex search [query]          # search cards, or list all
+memex read <slug>             # read a card
+memex write <slug>            # write a card (stdin)
+memex links [slug]            # link graph stats
+memex archive <slug>          # archive a card
+memex serve                   # visual timeline UI
+memex sync                    # sync via git
+memex mcp                     # start MCP server (stdio)
 ```
 
-Cards are atomic. Links are in prose, not metadata. Context explains the relationship.
+## How it works
 
-## Why not vector search?
+Based on Niklas Luhmann's Zettelkasten method — the system behind 70 books from 90,000 handwritten cards:
 
-| | Vector DB (mem0, etc.) | memex |
-|---|---|---|
-| Semantic matching | Embedding model | LLM generates multiple queries |
-| Relationship discovery | Cosine similarity (implicit) | `[[links]]` (explicit) |
-| Retrieval | One-shot top-K | Iterative exploration |
-| Explainability | Opaque | Human-readable |
-| Infrastructure | Qdrant/ChromaDB | `~/.memex/cards/` |
-| Debugging | Good luck | Open the .md file |
+- **Atomic notes** — one idea per card
+- **Own words** — forces understanding (the Feynman method)
+- **Links in context** — "this relates to [[X]] because..." not just tags
+- **Keyword index** — curated entry points to the card network
 
-The trade-off: more LLM tokens for full transparency. Tokens get cheaper every year.
+Cards are stored as markdown in `~/.memex/cards/`. Open them in Obsidian, edit with vim, grep from terminal. Your memory is never locked in.
 
 ## License
 
