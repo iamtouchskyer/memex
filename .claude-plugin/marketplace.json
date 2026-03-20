@@ -1,9 +1,9 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "memex-local",
-  "description": "Local marketplace for memex-cli development",
+  "name": "memex",
+  "description": "Zettelkasten-based agent memory system with bidirectional links",
   "owner": {
-    "name": "local"
+    "name": "iamtouchskyer"
   },
   "plugins": [
     {

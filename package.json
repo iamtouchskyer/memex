@@ -1,5 +1,5 @@
 {
-  "name": "memex-cli",
+  "name": "@iamtouchskyer/memex",
   "version": "0.1.0",
   "description": "Zettelkasten-based agent memory system with bidirectional links",
   "type": "module",
@@ -25,7 +25,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/iamtouchskyer/memex-cli.git"
+    "url": "https://github.com/iamtouchskyer/memex.git"
   },
   "dependencies": {
     "commander": "^14.0.3",
