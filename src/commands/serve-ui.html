@@ -130,14 +130,7 @@ body::-webkit-scrollbar { display: none; }
 [data-theme="midnight"] .cat-item.active {
   background: rgba(0,122,255,0.15);
 }
-[data-theme="midnight"] .heatmap-cell {
-  background: rgba(255,255,255,0.08) !important;
-}
-[data-theme="midnight"] .heatmap-cell.l1 { background: rgba(52,199,89,0.25) !important; }
-[data-theme="midnight"] .heatmap-cell.l2 { background: rgba(52,199,89,0.45) !important; }
-[data-theme="midnight"] .heatmap-cell.l3 { background: rgba(52,199,89,0.65) !important; }
-[data-theme="midnight"] .heatmap-cell.l4 { background: rgba(52,199,89,0.9) !important; }
-[data-theme="midnight"] .heatmap-months span { color: rgba(255,255,255,0.3); }
+[data-theme="midnight"] .spark-months span { color: rgba(255,255,255,0.3); }
 [data-theme="midnight"] .date-header { color: rgba(255,255,255,0.4); }
 [data-theme="midnight"] .card-body-inner code { background: rgba(255,255,255,0.1); }
 [data-theme="midnight"] .card-body-inner pre { background: rgba(255,255,255,0.06); }
@@ -260,39 +253,44 @@ body::-webkit-scrollbar { display: none; }
   margin-top: 2px;
 }
 
-/* Heatmap */
+/* Sparkline */
 .heatmap-wrap {
   margin-bottom: 24px;
 }
-.heatmap-grid {
+.spark-chart {
   display: flex;
-  gap: 3px;
+  align-items: flex-end;
+  gap: 1.5px;
+  height: 40px;
+  padding: 0;
 }
-.heatmap-col {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
+.spark-bar {
+  flex: 1;
+  min-width: 1.5px;
+  border-radius: 1px 1px 0 0;
+  background: var(--green);
+  opacity: 0.7;
+  transition: opacity 0.15s ease;
 }
-.heatmap-cell {
-  width: 13px;
-  height: 13px;
-  border-radius: 2px;
-  background: rgba(0,0,0,0.06);
+.spark-bar:hover {
+  opacity: 1;
 }
-.heatmap-cell.l1 { background: rgba(52,199,89,0.25); }
-.heatmap-cell.l2 { background: rgba(52,199,89,0.5); }
-.heatmap-cell.l3 { background: rgba(52,199,89,0.75); }
-.heatmap-cell.l4 { background: #34c759; }
-.heatmap-months {
+.spark-bar.empty {
+  background: rgba(0,0,0,0.05);
+  opacity: 1;
+}
+[data-theme="midnight"] .spark-bar.empty {
+  background: rgba(255,255,255,0.06);
+}
+.spark-months {
   display: flex;
   margin-top: 4px;
   font-size: 9px;
   color: var(--label-3);
-  padding-left: 0;
 }
-.heatmap-months span {
+.spark-months span {
   flex: 1;
-  text-align: center;
+  text-align: left;
 }
 
 /* Separator */
@@ -738,9 +736,8 @@ body::-webkit-scrollbar { display: none; }
     renderTimeline();
   }
 
-  // ---- Heatmap ----
+  // ---- Sparkline ----
   function buildHeatmap() {
-    // Count activity per day from created/modified
     const counts = {};
     allCards.forEach(c => {
       [c.created, c.modified].forEach(d => {
@@ -751,76 +748,39 @@ body::-webkit-scrollbar { display: none; }
     });
 
     const today = new Date();
-    // Start from 12 weeks ago, aligned to Monday
+    const days = 84; // 12 weeks
     const start = new Date(today);
-    start.setDate(start.getDate() - (12 * 7 - 1));
-    // Align to Monday (1=Mon)
-    const dow = start.getDay();
-    const mondayOffset = dow === 0 ? -6 : 1 - dow;
-    start.setDate(start.getDate() + mondayOffset);
+    start.setDate(start.getDate() - days + 1);
 
-    const weeks = [];
+    const bars = [];
     const d = new Date(start);
     while (d <= today) {
-      const week = [];
-      for (let i = 0; i < 7; i++) {
-        const ds = d.toISOString().slice(0, 10);
-        const count = counts[ds] || 0;
-        const future = d > today;
-        week.push({ date: ds, count, future });
-        d.setDate(d.getDate() + 1);
-      }
-      weeks.push(week);
+      const ds = d.toISOString().slice(0, 10);
+      bars.push({ date: ds, count: counts[ds] || 0 });
+      d.setDate(d.getDate() + 1);
     }
 
-    // Determine max for scaling
-    const maxCount = Math.max(1, ...Object.values(counts));
-    function level(count) {
-      if (count === 0) return '';
-      const ratio = count / maxCount;
-      if (ratio <= 0.25) return 'l1';
-      if (ratio <= 0.5) return 'l2';
-      if (ratio <= 0.75) return 'l3';
-      return 'l4';
-    }
+    const maxCount = Math.max(1, ...bars.map(b => b.count));
 
-    let html = '<div class="heatmap-grid">';
-    weeks.forEach(week => {
-      html += '<div class="heatmap-col">';
-      week.forEach(cell => {
-        if (cell.future) {
-          html += '<div class="heatmap-cell" style="visibility:hidden"></div>';
-        } else {
-          const lv = level(cell.count);
-          const title = cell.date + ': ' + cell.count + ' activities';
-          html += '<div class="heatmap-cell ' + lv + '" title="' + title + '"></div>';
-        }
-      });
-      html += '</div>';
+    let html = '<div class="spark-chart">';
+    bars.forEach(b => {
+      const pct = b.count > 0 ? Math.max(8, (b.count / maxCount) * 100) : 4;
+      const cls = b.count === 0 ? 'spark-bar empty' : 'spark-bar';
+      const title = b.date + ': ' + b.count + ' activities';
+      html += '<div class="' + cls + '" style="height:' + pct + '%" title="' + title + '"></div>';
     });
     html += '</div>';
 
     // Month labels
     const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    const seenMonths = [];
+    const seen = [];
     let lastMonth = -1;
-    weeks.forEach((week, wi) => {
-      const m = new Date(week[0].date).getMonth();
-      if (m !== lastMonth) {
-        seenMonths.push({ index: wi, label: months[m] });
-        lastMonth = m;
-      }
+    bars.forEach((b, i) => {
+      const m = new Date(b.date).getMonth();
+      if (m !== lastMonth) { seen.push({ i, label: months[m] }); lastMonth = m; }
     });
-    html += '<div class="heatmap-months">';
-    let mi = 0;
-    weeks.forEach((_, wi) => {
-      if (mi < seenMonths.length && seenMonths[mi].index === wi) {
-        html += '<span>' + seenMonths[mi].label + '</span>';
-        mi++;
-      } else {
-        html += '<span></span>';
-      }
-    });
+    html += '<div class="spark-months">';
+    seen.forEach(s => { html += '<span>' + s.label + '</span>'; });
     html += '</div>';
 
     document.getElementById('heatmap').innerHTML = html;
