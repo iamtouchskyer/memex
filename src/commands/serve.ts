@@ -138,26 +138,58 @@ function getHTML(): string {
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
 :root {
+  --surface: rgba(255,255,255,0.72);
+  --surface-2: rgba(255,255,255,0.45);
+  --menubar-bg: rgba(236,236,236,0.72);
+  --border: rgba(0,0,0,0.1);
+  --border-strong: rgba(0,0,0,0.18);
+  --label: #1d1d1f;
+  --label-2: rgba(60,60,67,0.6);
+  --label-3: rgba(60,60,67,0.36);
   --blue: #007aff;
   --green: #34c759;
-  --label: rgba(0,0,0,0.85);
-  --label-2: rgba(0,0,0,0.55);
-  --label-3: rgba(0,0,0,0.3);
-  --surface: rgba(255,255,255,0.72);
-  --surface-border: rgba(255,255,255,0.8);
+  --purple: #af52de;
   --spring: cubic-bezier(0.34,1.2,0.64,1);
 }
 
 html, body {
   height: 100%;
   font-family: -apple-system, 'SF Pro Text', 'SF Pro Display', 'Helvetica Neue', sans-serif;
-  background: linear-gradient(180deg, #f5f5f7 0%, #e8e8ed 100%);
   color: var(--label);
   -webkit-font-smoothing: antialiased;
   scrollbar-width: none;
+  overflow-x: hidden;
 }
 body::-webkit-scrollbar { display: none; }
+*::-webkit-scrollbar { display: none; }
 
+/* === Wallpaper === */
+.wallpaper {
+  position: fixed; inset: 0; z-index: 0;
+  background: linear-gradient(160deg, #b8cfe0 0%, #c5bedd 40%, #d4c5cc 70%, #c8d4c8 100%);
+  background-size: 200% 200%;
+  animation: wallpaperBreathe 12s ease-in-out infinite;
+}
+.wallpaper::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse at 30% 20%, rgba(255,255,255,0.25) 0%, transparent 60%),
+              radial-gradient(ellipse at 80% 80%, rgba(180,160,200,0.3) 0%, transparent 50%);
+  animation: glowBreathe 10s ease-in-out infinite alternate;
+}
+@keyframes wallpaperBreathe {
+  0%   { background-position: 0% 0%; }
+  25%  { background-position: 100% 20%; }
+  50%  { background-position: 80% 100%; }
+  75%  { background-position: 20% 80%; }
+  100% { background-position: 0% 0%; }
+}
+@keyframes glowBreathe {
+  0%   { opacity: 0.6; }
+  100% { opacity: 1; }
+}
+
+/* === Top bar === */
 .topbar {
   position: sticky;
   top: 0;
@@ -165,45 +197,59 @@ body::-webkit-scrollbar { display: none; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 24px;
-  background: rgba(236,236,236,0.72);
+  padding: 10px 24px;
+  background: var(--menubar-bg);
   backdrop-filter: blur(40px) saturate(180%);
   -webkit-backdrop-filter: blur(40px) saturate(180%);
-  border-bottom: 1px solid rgba(0,0,0,0.12);
+  border-bottom: 0.5px solid var(--border);
   gap: 16px;
 }
 
 .topbar-title {
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 700;
-  letter-spacing: -0.3px;
+  letter-spacing: -0.2px;
   color: var(--label);
   white-space: nowrap;
+  user-select: none;
 }
 
 .search-wrap {
   flex: 1;
-  max-width: 400px;
+  max-width: 360px;
+  position: relative;
+}
+.search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  color: var(--label-3);
+  pointer-events: none;
 }
 
 .search-input {
   width: 100%;
-  padding: 7px 12px;
-  font-size: 13px;
+  padding: 6px 12px 6px 30px;
+  font-size: 12px;
   font-family: inherit;
-  background: rgba(255,255,255,0.9);
-  border: 1px solid rgba(0,0,0,0.1);
-  border-radius: 8px;
+  background: rgba(0,0,0,0.04);
+  border: 0.5px solid var(--border);
+  border-radius: 7px;
   outline: none;
   color: var(--label);
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: all 0.2s ease;
 }
 .search-input:focus {
-  border-color: var(--blue);
-  box-shadow: 0 0 0 3px rgba(0,122,255,0.15);
+  background: rgba(255,255,255,0.85);
+  border-color: rgba(0,122,255,0.4);
+  box-shadow: 0 0 0 3px rgba(0,122,255,0.1);
 }
 .search-input::placeholder {
   color: var(--label-3);
+  font-size: 12px;
 }
 
 .stats {
@@ -211,47 +257,96 @@ body::-webkit-scrollbar { display: none; }
   font-weight: 400;
   color: var(--label-3);
   white-space: nowrap;
+  user-select: none;
 }
 
+/* === Main === */
 .main {
-  max-width: 720px;
+  position: relative;
+  z-index: 1;
+  max-width: 640px;
   margin: 0 auto;
-  padding: 24px 16px 80px;
+  padding: 20px 16px 100px;
 }
 
+/* === Cards === */
 .card {
+  border-radius: 18px;
   background: var(--surface);
   backdrop-filter: blur(40px) saturate(180%);
   -webkit-backdrop-filter: blur(40px) saturate(180%);
-  border: 1px solid var(--surface-border);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08), 0 12px 32px rgba(0,0,0,0.10);
-  border-radius: 16px;
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08), 0 12px 32px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.9);
   padding: 16px 20px;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
   cursor: pointer;
-  transition: transform 0.35s var(--spring), box-shadow 0.3s ease;
+  transition: transform 0.2s var(--spring), box-shadow 0.2s ease;
   will-change: transform;
+  animation: cardIn 0.3s var(--spring) both;
 }
 .card:hover {
-  transform: scale(1.008);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.10), 0 16px 40px rgba(0,0,0,0.13);
+  transform: translateY(-3px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.1), 0 20px 48px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.9);
 }
 .card.expanded {
   cursor: default;
+  transform: none;
+}
+.card.expanded:hover {
+  transform: none;
+}
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(14px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.source-badge {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 20px;
+  text-transform: lowercase;
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
+}
+.source-badge.retro {
+  background: rgba(0,122,255,0.08);
+  color: #007aff;
+}
+.source-badge.manual {
+  background: rgba(52,199,89,0.08);
+  color: #34c759;
+}
+.source-badge.organize {
+  background: rgba(175,82,222,0.08);
+  color: #af52de;
+}
+.source-badge.default {
+  background: rgba(60,60,67,0.06);
+  color: var(--label-3);
 }
 
 .card-date {
-  font-size: 11px;
-  font-weight: 400;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
   color: var(--label-3);
-  margin-bottom: 4px;
 }
 
 .card-title {
   font-size: 13px;
   font-weight: 600;
   color: var(--label);
-  margin-bottom: 2px;
+  margin-bottom: 3px;
+  line-height: 1.35;
 }
 
 .card-preview {
@@ -268,34 +363,36 @@ body::-webkit-scrollbar { display: none; }
 .card-links {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 5px;
 }
 
 .chip {
   display: inline-block;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 500;
   color: var(--blue);
   background: rgba(0,122,255,0.08);
-  padding: 2px 8px;
-  border-radius: 6px;
+  padding: 3px 10px;
+  border-radius: 20px;
   cursor: pointer;
   text-decoration: none;
-  transition: background 0.15s;
+  transition: background 0.15s ease, transform 0.15s var(--spring);
+  user-select: none;
 }
 .chip:hover {
   background: rgba(0,122,255,0.16);
+  transform: scale(1.04);
 }
 
 .card-body {
   overflow: hidden;
   max-height: 0;
   opacity: 0;
-  transition: max-height 0.45s var(--spring), opacity 0.3s ease, margin 0.3s ease;
+  transition: max-height 0.5s var(--spring), opacity 0.3s ease, margin 0.3s ease;
   margin-top: 0;
 }
 .card.expanded .card-body {
-  max-height: 2000px;
+  max-height: 3000px;
   opacity: 1;
   margin-top: 12px;
 }
@@ -308,7 +405,7 @@ body::-webkit-scrollbar { display: none; }
   font-weight: 400;
   line-height: 1.55;
   color: var(--label);
-  border-top: 1px solid rgba(0,0,0,0.06);
+  border-top: 0.5px solid var(--border);
   padding-top: 12px;
 }
 .card-body-inner p { margin-bottom: 8px; }
@@ -317,48 +414,69 @@ body::-webkit-scrollbar { display: none; }
   padding: 1px 5px;
   border-radius: 4px;
   font-size: 12px;
+  font-family: 'SF Mono', 'Fira Code', 'Menlo', monospace;
 }
 .card-body-inner pre {
   background: rgba(0,0,0,0.04);
-  padding: 12px;
-  border-radius: 8px;
+  padding: 12px 14px;
+  border-radius: 10px;
   overflow-x: auto;
   margin-bottom: 8px;
   scrollbar-width: none;
+  border: 0.5px solid var(--border);
 }
 .card-body-inner pre::-webkit-scrollbar { display: none; }
 .card-body-inner pre code {
   background: none;
   padding: 0;
 }
+.card-body-inner strong {
+  font-weight: 600;
+  color: var(--label);
+}
 
 .card-highlight {
-  animation: highlight-pulse 1s ease;
+  animation: highlight-pulse 1.2s ease;
 }
 @keyframes highlight-pulse {
-  0% { box-shadow: 0 0 0 3px rgba(0,122,255,0.4), 0 2px 8px rgba(0,0,0,0.08), 0 12px 32px rgba(0,0,0,0.10); }
-  100% { box-shadow: 0 2px 8px rgba(0,0,0,0.08), 0 12px 32px rgba(0,0,0,0.10); }
+  0%   { box-shadow: 0 0 0 4px rgba(0,122,255,0.35), 0 2px 8px rgba(0,0,0,0.08), 0 12px 32px rgba(0,0,0,0.1); }
+  100% { box-shadow: 0 2px 8px rgba(0,0,0,0.08), 0 12px 32px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.9); }
 }
 
 .empty {
   text-align: center;
-  padding: 60px 20px;
+  padding: 80px 20px;
   color: var(--label-3);
   font-size: 13px;
+  font-weight: 500;
+}
+
+/* === Loading shimmer === */
+.loading-text {
+  color: var(--label-3);
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+@keyframes shimmer {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
 }
 
 @media (max-width: 600px) {
-  .topbar { padding: 10px 16px; }
-  .main { padding: 16px 12px 60px; }
-  .card { padding: 14px 16px; }
+  .topbar { padding: 8px 14px; }
+  .main { padding: 14px 10px 80px; }
+  .card { padding: 14px 16px; border-radius: 14px; }
+  .search-wrap { max-width: 200px; }
 }
 </style>
 </head>
 <body>
 
+<div class="wallpaper"></div>
+
 <div class="topbar">
   <div class="topbar-title">memex</div>
   <div class="search-wrap">
+    <svg class="search-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="8.5" cy="8.5" r="5.5"/><line x1="13" y1="13" x2="17" y2="17"/></svg>
     <input type="text" class="search-input" placeholder="Search cards..." id="search">
   </div>
   <div class="stats" id="stats"></div>
@@ -376,6 +494,8 @@ body::-webkit-scrollbar { display: none; }
   const searchInput = document.getElementById('search');
   const statsEl = document.getElementById('stats');
 
+  const sourceColors = { retro: 'retro', manual: 'manual', organize: 'organize' };
+
   async function loadCards() {
     const res = await fetch('/api/cards');
     allCards = await res.json();
@@ -389,7 +509,7 @@ body::-webkit-scrollbar { display: none; }
       timeline.innerHTML = '<div class="empty">No cards found</div>';
       return;
     }
-    timeline.innerHTML = cards.map(c => cardHTML(c)).join('');
+    timeline.innerHTML = cards.map((c, i) => cardHTML(c, i)).join('');
     timeline.querySelectorAll('.card').forEach(el => {
       el.addEventListener('click', (e) => {
         if (e.target.closest('.chip')) return;
@@ -404,14 +524,21 @@ body::-webkit-scrollbar { display: none; }
     });
   }
 
-  function cardHTML(c) {
+  function cardHTML(c, index) {
     const date = c.created ? c.created.slice(0, 10) : '';
     const chips = c.links.map(l =>
       '<span class="chip" data-link="' + esc(l) + '">[[' + esc(l) + ']]</span>'
     ).join('');
     const isExpanded = expandedSlug === c.slug;
-    return '<div class="card' + (isExpanded ? ' expanded' : '') + '" data-slug="' + esc(c.slug) + '" id="card-' + esc(c.slug) + '">'
-      + '<div class="card-date">' + esc(date) + '</div>'
+    const src = (c.source || '').toLowerCase();
+    const badgeClass = sourceColors[src] || 'default';
+    const badgeLabel = src || 'note';
+    const delay = Math.min(index * 0.04, 0.8);
+    return '<div class="card' + (isExpanded ? ' expanded' : '') + '" data-slug="' + esc(c.slug) + '" id="card-' + esc(c.slug) + '" style="animation-delay:' + delay + 's">'
+      + '<div class="card-header">'
+      + '<span class="source-badge ' + badgeClass + '">' + esc(badgeLabel) + '</span>'
+      + '<span class="card-date">' + esc(date) + '</span>'
+      + '</div>'
       + '<div class="card-title">' + esc(c.title) + '</div>'
       + '<div class="card-preview">' + esc(c.firstLine) + '</div>'
       + (chips ? '<div class="card-links">' + chips + '</div>' : '')
@@ -436,7 +563,7 @@ body::-webkit-scrollbar { display: none; }
 
     const bodyEl = document.getElementById('body-' + slug);
     if (!bodyCache[slug]) {
-      bodyEl.innerHTML = '<span style="color:var(--label-3)">Loading...</span>';
+      bodyEl.innerHTML = '<span class="loading-text">Loading...</span>';
       const res = await fetch('/api/cards/' + encodeURIComponent(slug));
       const raw = await res.text();
       // Strip frontmatter
@@ -458,7 +585,7 @@ body::-webkit-scrollbar { display: none; }
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
       el.classList.add('card-highlight');
-      setTimeout(() => el.classList.remove('card-highlight'), 1100);
+      setTimeout(() => el.classList.remove('card-highlight'), 1300);
       if (!el.classList.contains('expanded')) {
         toggleCard(el, slug);
       }
@@ -466,7 +593,7 @@ body::-webkit-scrollbar { display: none; }
   }
 
   function renderMarkdown(text) {
-    // Simple markdown → HTML
+    // Simple markdown -> HTML
     let html = esc(text);
     // Code blocks
     html = html.replace(/\`\`\`([\\s\\S]*?)\`\`\`/g, '<pre><code>$1</code></pre>');
@@ -474,7 +601,7 @@ body::-webkit-scrollbar { display: none; }
     html = html.replace(/\`([^\`]+)\`/g, '<code>$1</code>');
     // Bold
     html = html.replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>');
-    // [[links]] → chips
+    // [[links]] -> chips
     html = html.replace(/\\[\\[([^\\]]+)\\]\\]/g, '<span class="chip" data-link="$1">[[$1]]</span>');
     // Paragraphs
     html = html.split('\\n\\n').map(p => '<p>' + p + '</p>').join('');
