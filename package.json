@@ -1,5 +1,5 @@
 {
-  "name": "@iamtouchskyer/memex",
+  "name": "@touchskyer/memex",
   "version": "0.1.0",
   "description": "Zettelkasten-based agent memory system with bidirectional links",
   "type": "module",

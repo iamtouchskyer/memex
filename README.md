@@ -57,7 +57,7 @@ memex gives this to AI agents. The retro skill writes cards like Luhmann wrote n
 
 ```bash
 # CLI
-npm install -g @iamtouchskyer/memex
+npm install -g @touchskyer/memex
 
 # Claude Code plugin
 /plugin marketplace add iamtouchskyer/memex
