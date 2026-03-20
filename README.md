@@ -63,6 +63,16 @@ codex mcp add memex -- npx -y @touchskyer/memex mcp
 
 Add memex as an MCP server with command `npx` and args `["-y", "@touchskyer/memex", "mcp"]`.
 
+### Add agent instructions (recommended for MCP users)
+
+After installing the MCP server, run this in your project directory:
+
+```bash
+npx @touchskyer/memex init
+```
+
+This adds a memex section to your `AGENTS.md` that teaches the agent when to recall and retro. Supported by Cursor, Copilot, Codex, and Windsurf.
+
 ## Upgrade
 
 ### Claude Code
@@ -117,6 +127,7 @@ memex archive <slug>          # archive a card
 memex serve                   # visual timeline UI
 memex sync                    # sync via git
 memex mcp                     # start MCP server (stdio)
+memex init                    # add memex section to AGENTS.md
 ```
 
 ## How it works

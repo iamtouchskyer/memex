@@ -1,7 +1,12 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { homedir } from "node:os";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const pkg = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8"));
 import { CardStore } from "./lib/store.js";
 import { writeCommand } from "./commands/write.js";
 import { readCommand } from "./commands/read.js";
@@ -10,6 +15,7 @@ import { linksCommand } from "./commands/links.js";
 import { archiveCommand } from "./commands/archive.js";
 import { serveCommand } from "./commands/serve.js";
 import { syncCommand } from "./commands/sync.js";
+import { initCommand } from "./commands/init.js";
 
 function getStore(): CardStore {
   const home = process.env.MEMEX_HOME || join(homedir(), ".memex");
@@ -25,7 +31,7 @@ async function readStdin(): Promise<string> {
 }
 
 const program = new Command();
-program.name("memex").description("Zettelkasten agent memory CLI").version("0.1.0");
+program.name("memex").description("Zettelkasten agent memory CLI").version(pkg.version);
 
 program
   .command("search [query]")
@@ -131,6 +137,15 @@ program
       }
     }
   );
+
+program
+  .command("init")
+  .description("Add memex instructions to AGENTS.md in current directory")
+  .action(async () => {
+    const result = await initCommand(process.cwd());
+    if (result.output) process.stdout.write(result.output + "\n");
+    if (!result.success) process.exit(1);
+  });
 
 program
   .command("mcp")
