@@ -55,23 +55,23 @@ memex gives this to AI agents. The retro skill writes cards like Luhmann wrote n
 
 ## Install
 
-**Step 1: Install the CLI first** (required — skills and hooks depend on it)
-
-```bash
-npm install -g @touchskyer/memex
-memex search   # verify: should output nothing (empty memory)
-```
-
-**Step 2: Install the Claude Code plugin** (run inside Claude Code)
+In Claude Code, run:
 
 ```bash
 /plugin marketplace add iamtouchskyer/memex
 /plugin install memex@memex
 ```
 
-After restarting Claude Code, you'll have:
+On next session start, the plugin will detect the CLI is missing and prompt you to install it:
+
+```bash
+npm install -g @touchskyer/memex
+```
+
+That's it. After restart you'll have:
 - 3 skills: `/memex-recall`, `/memex-retro`, `/memex-organize`
 - Auto-recall: keyword index injected into every new session
+- Auto-retro: LLM writes memory cards after completing tasks
 
 ## CLI
 
