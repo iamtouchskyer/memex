@@ -1,5 +1,5 @@
 ---
-name: memex-recall
+name: recall
 description: Retrieve relevant memories from the Zettelkasten before starting a task. Use at the beginning of any task that might benefit from prior knowledge.
 ---
 
