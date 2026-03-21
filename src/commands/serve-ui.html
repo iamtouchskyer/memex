@@ -757,39 +757,51 @@ body::-webkit-scrollbar { display: none; }
 .graph-search:focus { border-color: rgba(90,200,250,0.3); }
 .graph-search::placeholder { color: rgba(255,255,255,0.15); }
 
-.graph-popover {
+.graph-card-panel {
   position: absolute;
-  width: 270px;
-  background: rgba(20,20,28,0.95);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(90,200,250,0.15);
-  border-radius: 12px;
-  padding: 16px;
-  opacity: 0;
-  transform: scale(0.92) translateY(4px);
-  transition: opacity 0.25s, transform 0.3s cubic-bezier(0.34,1.2,0.64,1);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 20px rgba(90,200,250,0.05);
-  z-index: 10;
+  top: 16px;
+  right: 16px;
+  width: 340px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  z-index: 20;
   display: none;
-  pointer-events: auto;
+  scrollbar-width: none;
+  opacity: 0;
+  transform: translateX(20px);
+  transition: opacity 0.25s, transform 0.3s cubic-bezier(0.34,1.2,0.64,1);
 }
-.graph-popover.open { display: block; opacity: 1; transform: scale(1) translateY(0); }
-.graph-popover-arrow {
-  position: absolute;
-  width: 10px;
-  height: 10px;
-  background: rgba(20,20,28,0.95);
-  border: 1px solid rgba(90,200,250,0.15);
-  transform: rotate(45deg);
-  z-index: -1;
+.graph-card-panel.open {
+  display: block;
+  opacity: 1;
+  transform: translateX(0);
 }
-.graph-pop-title { font-size: 14px; font-weight: 600; color: rgba(255,255,255,0.9); margin-bottom: 4px; line-height: 1.3; }
-.graph-pop-meta { font-size: 10px; color: rgba(255,255,255,0.25); margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
-.graph-pop-badge { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; padding: 1px 6px; border-radius: 4px; }
-.graph-pop-body { font-size: 12px; line-height: 1.55; color: rgba(255,255,255,0.45); margin-bottom: 12px; max-height: 80px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; }
-.graph-pop-links { border-top: 1px solid rgba(255,255,255,0.06); padding-top: 10px; display: flex; flex-wrap: wrap; gap: 4px; }
-.graph-pop-chip { font-size: 10px; color: #5ac8fa; background: rgba(90,200,250,0.08); padding: 3px 8px; border-radius: 10px; cursor: pointer; transition: background 0.15s; user-select: none; }
-.graph-pop-chip:hover { background: rgba(90,200,250,0.18); }
+.graph-card-panel::-webkit-scrollbar { display: none; }
+/* Override card styles inside graph */
+.graph-card-panel .card {
+  cursor: default;
+  animation: none;
+  background: rgba(30,30,38,0.92);
+  backdrop-filter: blur(20px);
+  border-color: rgba(90,200,250,0.12);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 20px rgba(90,200,250,0.03);
+}
+.graph-card-panel .card:hover { transform: none; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+.graph-card-panel .card .card-title { color: rgba(255,255,255,0.9); }
+.graph-card-panel .card .card-preview { color: rgba(255,255,255,0.4); }
+.graph-card-panel .card .card-time { color: rgba(255,255,255,0.25); }
+.graph-card-panel .card .card-dot { color: rgba(255,255,255,0.2); }
+.graph-card-panel .card .source-badge.retro { background: rgba(90,200,250,0.12); color: #5ac8fa; }
+.graph-card-panel .card .source-badge.organize { background: rgba(175,82,222,0.12); color: #bf5af2; }
+.graph-card-panel .card .source-badge.manual { background: rgba(52,199,89,0.1); color: #34c759; }
+.graph-card-panel .card .source-badge.default { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.3); }
+.graph-card-panel .card .chip { background: rgba(90,200,250,0.08); color: #5ac8fa; }
+.graph-card-panel .card .chip:hover { background: rgba(90,200,250,0.16); }
+.graph-card-panel .card .card-body-inner { color: rgba(255,255,255,0.6); border-top-color: rgba(255,255,255,0.06); }
+.graph-card-panel .card .card-body-inner code { background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.8); }
+.graph-card-panel .card .card-body-inner pre { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.08); }
+.graph-card-panel .card .card-body-inner strong { color: rgba(255,255,255,0.85); }
+.graph-card-panel .card .share-btn { background: rgba(90,200,250,0.1); color: #5ac8fa; }
 
 .graph-back-btn {
   position: absolute;
@@ -874,13 +886,7 @@ body::-webkit-scrollbar { display: none; }
     <svg class="graph-search-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="8.5" cy="8.5" r="5.5"/><line x1="13" y1="13" x2="17" y2="17"/></svg>
     <input type="text" class="graph-search" placeholder="Search nodes..." id="graphSearch">
   </div>
-  <div class="graph-popover" id="graphPopover">
-    <div class="graph-popover-arrow" id="graphPopArrow"></div>
-    <div class="graph-pop-title" id="graphPopTitle"></div>
-    <div class="graph-pop-meta" id="graphPopMeta"></div>
-    <div class="graph-pop-body" id="graphPopBody"></div>
-    <div class="graph-pop-links" id="graphPopLinks"></div>
-  </div>
+  <div class="graph-card-panel" id="graphCardPanel"></div>
   <div class="graph-orphan-badge" id="graphOrphanBadge"></div>
   <div class="graph-hint">CLICK TO INSPECT · DRAG TO PAN · SCROLL TO ZOOM</div>
 </div>
@@ -1268,6 +1274,7 @@ body::-webkit-scrollbar { display: none; }
     d.textContent = s;
     return d.innerHTML;
   }
+  window._memex = { renderMarkdown, esc, bodyCache, sourceColors };
 
   // Search
   searchInput.addEventListener('input', () => {
@@ -1805,63 +1812,54 @@ body::-webkit-scrollbar { display: none; }
   }
 
   // Popover
-  function showPopover(node) {
-    const [sx, sy] = toScreen(node.x, node.y);
-    const rect = canvas.parentElement.getBoundingClientRect();
-    const screenX = sx + rect.left;
-    const screenY = sy + rect.top;
+  const cardPanel = document.getElementById('graphCardPanel');
+  const { renderMarkdown: rmd, esc: gEsc, bodyCache: gBodyCache, sourceColors: gSrcColors } = window._memex || {};
 
-    document.getElementById('graphPopTitle').textContent = node.title;
-    const bc = node.source === 'retro' ? '#5ac8fa' : node.source === 'organize' ? '#bf5af2' : 'rgba(255,255,255,0.4)';
-    const bg = node.source === 'retro' ? 'rgba(90,200,250,0.12)' : node.source === 'organize' ? 'rgba(175,82,222,0.12)' : 'rgba(255,255,255,0.05)';
-    document.getElementById('graphPopMeta').innerHTML =
-      '<span class="graph-pop-badge" style="background:' + bg + ';color:' + bc + '">' + node.source + '</span>' +
-      '<span>' + node.created + '</span>';
-    document.getElementById('graphPopBody').textContent = node.firstLine || node.title;
-
-    const nbrs = getNeighbors(node.id);
-    document.getElementById('graphPopLinks').innerHTML = nbrs.map(nid =>
-      '<span class="graph-pop-chip" data-nav="' + nid + '">[[' + nid + ']]</span>'
+  async function showPopover(node) {
+    const src = (node.source || '').toLowerCase();
+    const badgeClass = (gSrcColors || {})[src] || 'default';
+    const badgeLabel = src || 'note';
+    const time = node.created ? node.created.slice(0, 10) : '';
+    const chips = (node.links || []).map(l =>
+      '<span class="chip" data-link="' + gEsc(l) + '">[[' + gEsc(l) + ']]</span>'
     ).join('');
 
-    const pop = popover;
-    pop.style.visibility = 'hidden';
-    pop.classList.add('open');
+    // Load body
+    let bodyHtml = '';
+    if (gBodyCache && gBodyCache[node.id]) {
+      bodyHtml = rmd(gBodyCache[node.id]);
+    } else {
+      try {
+        const res = await fetch('/api/cards/' + encodeURIComponent(node.id));
+        const raw = await res.text();
+        const stripped = raw.replace(/^---[\s\S]*?---\n?/, '').trim();
+        if (gBodyCache) gBodyCache[node.id] = stripped;
+        bodyHtml = rmd(stripped);
+      } catch { bodyHtml = '<p>' + gEsc(node.firstLine || '') + '</p>'; }
+    }
 
-    requestAnimationFrame(() => {
-      const popW = 270, popH = pop.offsetHeight || 180;
-      let left = sx - popW / 2;
-      let top = sy - node.displayR * cam.zoom - popH - 14;
-      const arrow = document.getElementById('graphPopArrow');
-      let above = true;
+    cardPanel.innerHTML =
+      '<div class="card expanded" style="animation:none;cursor:default">'
+      + '<div class="card-header">'
+      + '<span class="source-badge ' + badgeClass + '">' + gEsc(badgeLabel) + '</span>'
+      + '<span class="card-dot">\u00b7</span>'
+      + '<span class="card-time">' + gEsc(time) + '</span>'
+      + '</div>'
+      + '<div class="card-title">' + gEsc(node.title) + '</div>'
+      + '<div class="card-body" style="max-height:none;opacity:1;margin-top:8px"><div class="card-body-inner">'
+      + bodyHtml
+      + '</div>'
+      + '<button class="share-btn" onclick="event.stopPropagation();shareCard(\'' + gEsc(node.id) + '\')">Share</button>'
+      + '</div>'
+      + '</div>';
 
-      if (top < 10) { top = sy + node.displayR * cam.zoom + 14; above = false; }
-      left = Math.max(8, Math.min(canvas.parentElement.offsetWidth - popW - 8, left));
+    cardPanel.classList.add('open');
 
-      pop.style.left = left + 'px';
-      pop.style.top = top + 'px';
-      pop.style.visibility = 'visible';
-
-      const al = Math.max(16, Math.min(popW - 26, sx - left));
-      arrow.style.left = al + 'px';
-      if (above) {
-        arrow.style.bottom = '-6px'; arrow.style.top = 'auto';
-        arrow.style.borderTop = 'none'; arrow.style.borderLeft = 'none';
-        arrow.style.borderRight = '1px solid rgba(90,200,250,0.15)';
-        arrow.style.borderBottom = '1px solid rgba(90,200,250,0.15)';
-      } else {
-        arrow.style.top = '-6px'; arrow.style.bottom = 'auto';
-        arrow.style.borderBottom = 'none'; arrow.style.borderRight = 'none';
-        arrow.style.borderTop = '1px solid rgba(90,200,250,0.15)';
-        arrow.style.borderLeft = '1px solid rgba(90,200,250,0.15)';
-      }
-    });
-
-    // Chip navigation
-    pop.querySelectorAll('.graph-pop-chip').forEach(chip => {
-      chip.onclick = (e) => {
+    // Bind chip clicks to navigate graph
+    cardPanel.querySelectorAll('.chip').forEach(chip => {
+      chip.addEventListener('click', (e) => {
         e.stopPropagation();
-        const tid = chip.dataset.nav;
+        const tid = chip.dataset.link;
         const target = gNodes.find(n => n.id === tid);
         if (target) {
           hidePopover();
@@ -1870,26 +1868,11 @@ body::-webkit-scrollbar { display: none; }
           camTarget.y = -target.y;
           setTimeout(() => showPopover(target), 350);
         }
-      };
+      });
     });
   }
 
-  function hidePopover() { popover.classList.remove('open'); }
-
-  function repositionPopover() {
-    if (!selectedId || !popover.classList.contains('open')) return;
-    const node = gNodes.find(n => n.id === selectedId);
-    if (!node) return;
-    const [sx, sy] = toScreen(node.x, node.y);
-    const popW = 270, popH = popover.offsetHeight || 180;
-    let left = sx - popW / 2, top = sy - node.displayR * cam.zoom - popH - 14;
-    if (top < 10) top = sy + node.displayR * cam.zoom + 14;
-    left = Math.max(8, Math.min(canvas.parentElement.offsetWidth - popW - 8, left));
-    popover.style.left = left + 'px';
-    popover.style.top = top + 'px';
-  }
-
-  setInterval(repositionPopover, 16);
+  function hidePopover() { cardPanel.classList.remove('open'); }
 
   // Events
   canvas.addEventListener('mousedown', (e) => {
