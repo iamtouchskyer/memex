@@ -697,48 +697,11 @@ body::-webkit-scrollbar { display: none; }
   gap: 16px;
 }
 .share-overlay.open { display: flex; }
-.share-preview {
-  border-radius: 14px;
-  box-shadow: 0 12px 48px rgba(0,0,0,0.3);
-}
-.share-actions {
-  display: flex;
-  gap: 8px;
-}
-.share-action-btn {
-  padding: 8px 20px;
-  border: none;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.share-action-btn.primary {
-  background: #007aff;
-  color: #fff;
-}
-.share-action-btn.primary:hover { background: #0066d6; }
-.share-action-btn.secondary {
+.share-overlay .memex-sc-btn.secondary {
   background: rgba(255,255,255,0.1);
   color: rgba(255,255,255,0.7);
 }
-.share-action-btn.secondary:hover { background: rgba(255,255,255,0.15); }
-.share-themes {
-  display: flex;
-  gap: 6px;
-}
-.share-theme-btn {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  border: 2px solid transparent;
-  cursor: pointer;
-  transition: border-color 0.15s, transform 0.15s;
-}
-.share-theme-btn:hover { transform: scale(1.1); }
-.share-theme-btn.active { border-color: #007aff; }
+.share-overlay .memex-sc-btn.secondary:hover { background: rgba(255,255,255,0.15); }
 
 /* === View toggle === */
 .view-toggle {
@@ -949,17 +912,7 @@ body::-webkit-scrollbar { display: none; }
 
 <!-- Share modal -->
 <div class="share-overlay" id="shareOverlay" onclick="if(event.target===this)closeShare()">
-  <canvas class="share-preview" id="shareCanvas" width="600" height="800"></canvas>
-  <div class="share-themes" id="shareThemes">
-    <button class="share-theme-btn active" data-stheme="forest" style="background:#f3f6f0" onclick="setShareTheme('forest',this)"></button>
-    <button class="share-theme-btn" data-stheme="sonoma" style="background:#f5f5f7" onclick="setShareTheme('sonoma',this)"></button>
-    <button class="share-theme-btn" data-stheme="sunset" style="background:#f8f4f0" onclick="setShareTheme('sunset',this)"></button>
-    <button class="share-theme-btn" data-stheme="midnight" style="background:#1c1c1e" onclick="setShareTheme('midnight',this)"></button>
-  </div>
-  <div class="share-actions">
-    <button class="share-action-btn secondary" onclick="closeShare()">Cancel</button>
-    <button class="share-action-btn primary" onclick="downloadShare()">Download</button>
-  </div>
+  <div id="shareRoot" style="max-width:480px;width:100%;padding:20px"></div>
 </div>
 
 <!-- Theme picker -->
@@ -1365,164 +1318,325 @@ body::-webkit-scrollbar { display: none; }
 })();
 </script>
 
-<!-- Share card renderer -->
+<!-- Share card (inlined from src/share-card/share-card.js) -->
 <script>
 (function() {
-  let shareSlug = null;
-  let shareTheme = 'forest';
-  let shareData = null;
+// share-card.js — Independent ES module for memex share cards
+// Zero dependencies. markdownRenderer and html2canvas are injected/lazy-loaded.
 
-  const themes = {
-    forest:  { bg: '#f3f6f0', text: '#1d1d1f', sub: '#666', accent: '#007aff', chipBg: 'rgba(0,122,255,0.08)', chipText: '#007aff', border: 'rgba(0,0,0,0.08)', quote: '#34c759', brand: '#999' },
-    sonoma:  { bg: '#f5f5f7', text: '#1d1d1f', sub: '#666', accent: '#007aff', chipBg: 'rgba(0,122,255,0.08)', chipText: '#007aff', border: 'rgba(0,0,0,0.08)', quote: '#007aff', brand: '#999' },
-    sunset:  { bg: '#f8f4f0', text: '#2c2420', sub: '#8a7b6b', accent: '#d4603a', chipBg: 'rgba(212,96,58,0.08)', chipText: '#d4603a', border: 'rgba(0,0,0,0.06)', quote: '#d4603a', brand: '#b0a090' },
-    midnight:{ bg: '#1c1c1e', text: 'rgba(255,255,255,0.9)', sub: 'rgba(255,255,255,0.35)', accent: '#5ac8fa', chipBg: 'rgba(90,200,250,0.1)', chipText: '#5ac8fa', border: 'rgba(255,255,255,0.08)', quote: '#34c759', brand: 'rgba(255,255,255,0.2)' },
-  };
+const themes = {
+  clean: {
+    name: 'Clean',
+    background: '#ffffff',
+    text: '#1d1d1f',
+    secondary: '#666666',
+    accent: '#007aff',
+    chipBg: 'rgba(0,122,255,0.08)',
+    chipText: '#007aff',
+    border: 'rgba(0,0,0,0.08)',
+    brand: '#999999',
+    contentBg: 'rgba(255,255,255,0.9)',
+  },
+  aurora: {
+    name: 'Aurora',
+    background: 'radial-gradient(138% 32% at 70% 33%, #fff 2%, rgba(255,160,247,0.3) 50%, rgba(212,245,255,0.5)), #fff',
+    text: '#1d1d1f',
+    secondary: '#666666',
+    accent: '#007aff',
+    chipBg: 'rgba(0,122,255,0.08)',
+    chipText: '#007aff',
+    border: 'rgba(0,0,0,0.06)',
+    brand: '#999999',
+    contentBg: 'transparent',
+  },
+  spectrum: {
+    name: 'Spectrum',
+    background: 'linear-gradient(145deg, #c676ff 0%, #654cff 41%, #405eff 75%, #007fff 99%)',
+    text: '#ffffff',
+    secondary: 'rgba(255,255,255,0.7)',
+    accent: '#a0d4ff',
+    chipBg: 'rgba(255,255,255,0.15)',
+    chipText: 'rgba(255,255,255,0.9)',
+    border: 'rgba(255,255,255,0.15)',
+    brand: 'rgba(255,255,255,0.4)',
+    contentBg: 'rgba(0,0,0,0.15)',
+  },
+  ocean: {
+    name: 'Ocean',
+    background: '#235ff5',
+    text: '#ffffff',
+    secondary: 'rgba(255,255,255,0.7)',
+    accent: '#a0d4ff',
+    chipBg: 'rgba(255,255,255,0.15)',
+    chipText: 'rgba(255,255,255,0.9)',
+    border: 'rgba(255,255,255,0.15)',
+    brand: 'rgba(255,255,255,0.4)',
+    contentBg: 'rgba(0,0,0,0.1)',
+  },
+  ember: {
+    name: 'Ember',
+    background: '#fb7933',
+    text: '#ffffff',
+    secondary: 'rgba(255,255,255,0.75)',
+    accent: '#ffd6b0',
+    chipBg: 'rgba(255,255,255,0.18)',
+    chipText: 'rgba(255,255,255,0.9)',
+    border: 'rgba(255,255,255,0.18)',
+    brand: 'rgba(255,255,255,0.45)',
+    contentBg: 'rgba(0,0,0,0.08)',
+  },
+  frost: {
+    name: 'Frost',
+    background: '#e7f1fa',
+    text: '#1d1d1f',
+    secondary: '#5a7a9a',
+    accent: '#007aff',
+    chipBg: 'rgba(0,122,255,0.08)',
+    chipText: '#007aff',
+    border: 'rgba(17,31,44,0.08)',
+    brand: '#8aa0b8',
+    contentBg: 'rgba(255,255,255,0.5)',
+  },
+};
 
-  function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
-    const words = text.split(' ');
-    let line = '';
-    let lines = [];
-    words.forEach(word => {
-      const test = line + (line ? ' ' : '') + word;
-      if (ctx.measureText(test).width > maxWidth && line) {
-        lines.push(line);
-        line = word;
-      } else {
-        line = test;
-      }
-    });
-    if (line) lines.push(line);
-    lines.forEach((l, i) => ctx.fillText(l, x, y + i * lineHeight));
-    return lines.length;
+const STYLES = `
+.memex-sc-root { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+.memex-sc-picker { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px; max-width: 420px; }
+.memex-sc-thumb {
+  aspect-ratio: 3/4; border-radius: 8px; padding: 8px; cursor: pointer;
+  border: 2px solid transparent; transition: border-color 0.15s, transform 0.15s;
+  display: flex; flex-direction: column; gap: 3px; box-sizing: border-box;
+}
+.memex-sc-thumb:hover { transform: scale(1.05); }
+.memex-sc-thumb.active { border-color: #007aff; }
+.memex-sc-skel { border-radius: 2px; }
+.memex-sc-card {
+  width: 420px; border-radius: 16px; overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+}
+.memex-sc-card-inner { padding: 30px; }
+.memex-sc-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.memex-sc-source {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.5px;
+  padding: 3px 10px; border-radius: 10px;
+}
+.memex-sc-date { font-size: 12px; }
+.memex-sc-title { font-size: 18px; font-weight: 700; margin-bottom: 12px; line-height: 1.4; }
+.memex-sc-body {
+  font-size: 14px; line-height: 1.7; margin-bottom: 16px; border-radius: 8px; padding: 12px;
+}
+.memex-sc-body p { margin-bottom: 8px; }
+.memex-sc-body p:last-child { margin-bottom: 0; }
+.memex-sc-body pre { padding: 8px 12px; border-radius: 6px; overflow-x: auto; font-size: 12px; margin: 8px 0; }
+.memex-sc-body code { font-size: 12px; padding: 1px 5px; border-radius: 3px; }
+.memex-sc-body pre code { padding: 0; background: none; }
+.memex-sc-body table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 12px; }
+.memex-sc-body th, .memex-sc-body td { padding: 6px 10px; text-align: left; }
+.memex-sc-body th { font-weight: 600; }
+.memex-sc-body img { max-width: 100%; border-radius: 6px; margin: 8px 0; }
+.memex-sc-body ul, .memex-sc-body ol { padding-left: 20px; margin: 8px 0; }
+.memex-sc-body li { margin-bottom: 4px; }
+.memex-sc-body blockquote { margin: 8px 0; padding: 4px 12px; border-left: 3px solid; }
+.memex-sc-body h1, .memex-sc-body h2, .memex-sc-body h3 { margin: 12px 0 6px; font-weight: 600; }
+.memex-sc-body h1 { font-size: 18px; }
+.memex-sc-body h2 { font-size: 16px; }
+.memex-sc-body h3 { font-size: 14px; }
+.memex-sc-body hr { border: none; margin: 12px 0; }
+.memex-sc-links { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+.memex-sc-chip { font-size: 11px; padding: 3px 10px; border-radius: 11px; }
+.memex-sc-divider { height: 1px; margin-bottom: 16px; }
+.memex-sc-footer { display: flex; justify-content: space-between; align-items: center; }
+.memex-sc-stats { font-size: 10px; letter-spacing: 1px; }
+.memex-sc-brand { font-size: 11px; font-weight: 600; }
+.memex-sc-actions { display: flex; gap: 8px; justify-content: center; margin-top: 16px; }
+.memex-sc-btn {
+  padding: 8px 20px; border: none; border-radius: 8px;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  font-family: inherit; transition: all 0.15s;
+}
+.memex-sc-btn.primary { background: #007aff; color: #fff; }
+.memex-sc-btn.primary:hover { background: #0066d6; }
+.memex-sc-btn.secondary { background: rgba(0,0,0,0.06); color: #666; }
+.memex-sc-btn.secondary:hover { background: rgba(0,0,0,0.1); }
+`;
+
+let html2canvasPromise = null;
+
+function lazyLoadHtml2Canvas() {
+  if (window.html2canvas) return Promise.resolve(window.html2canvas);
+  if (html2canvasPromise) return html2canvasPromise;
+  html2canvasPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1/dist/html2canvas.min.js';
+    s.onload = () => resolve(window.html2canvas);
+    s.onerror = () => reject(new Error('Failed to load html2canvas'));
+    document.head.appendChild(s);
+  });
+  return html2canvasPromise;
+}
+
+function buildSkeleton(t) {
+  const light = t.text === '#ffffff' || t.text === 'rgba(255,255,255,0.9)';
+  const barColor = light ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.12)';
+  return `
+    <div class="memex-sc-skel" style="width:60%;height:5px;background:${barColor};margin-bottom:6px"></div>
+    <div class="memex-sc-skel" style="width:100%;height:3px;background:${barColor};margin-bottom:3px"></div>
+    <div class="memex-sc-skel" style="width:100%;height:3px;background:${barColor};margin-bottom:3px"></div>
+    <div class="memex-sc-skel" style="width:40%;height:3px;background:${barColor};margin-bottom:6px"></div>
+    <div class="memex-sc-skel" style="width:100%;height:20px;background:${barColor};border-radius:2px"></div>
+  `;
+}
+
+function createShareCard(container, options = {}) {
+  const {
+    data = {},
+    theme: initialTheme = 'aurora',
+    markdownRenderer = (text) => text,
+    onExport = null,
+    onCancel = null,
+  } = options;
+
+  let currentTheme = initialTheme;
+  let currentData = { ...data };
+
+  // Inject styles once
+  if (!document.getElementById('memex-sc-styles')) {
+    const style = document.createElement('style');
+    style.id = 'memex-sc-styles';
+    style.textContent = STYLES;
+    document.head.appendChild(style);
   }
 
-  function renderShareCard() {
-    if (!shareData) return;
-    const canvas = document.getElementById('shareCanvas');
-    const ctx = canvas.getContext('2d');
-    const t = themes[shareTheme];
-    const scale = 2;
-    const W = 420, H_BASE = 520;
+  // Build picker
+  let pickerHtml = '<div class="memex-sc-picker">';
+  for (const [key, t] of Object.entries(themes)) {
+    const border = t.border !== 'rgba(0,0,0,0.08)' ? '' : 'border:1px solid rgba(0,0,0,0.08);';
+    pickerHtml += `<div class="memex-sc-thumb${key === currentTheme ? ' active' : ''}" data-theme="${key}" style="background:${t.background};${border}">${buildSkeleton(t)}</div>`;
+  }
+  pickerHtml += '</div>';
 
-    // Measure content height first
-    ctx.font = '15px -apple-system, sans-serif';
-    const bodyLines = [];
-    const bodyText = shareData.body || shareData.firstLine || '';
-    const words = bodyText.split(' ');
-    let line = '';
-    words.forEach(w => {
-      const test = line + (line ? ' ' : '') + w;
-      ctx.font = '15px -apple-system, sans-serif';
-      if (ctx.measureText(test).width > (W - 80) * scale / scale && line) {
-        bodyLines.push(line); line = w;
-      } else { line = test; }
-    });
-    if (line) bodyLines.push(line);
+  function renderCard() {
+    const t = themes[currentTheme];
+    const bodyHtml = markdownRenderer(currentData.body || '');
+    const dateStr = currentData.created ? currentData.created.slice(0, 10).replace(/-/g, '/') : '';
+    const src = (currentData.source || 'note').toUpperCase();
+    const links = (currentData.links || [])
+      .map(l => `<span class="memex-sc-chip" style="background:${t.chipBg};color:${t.chipText}">[[${l}]]</span>`)
+      .join('');
+    const stats = currentData.stats
+      ? `${currentData.stats.totalCards || 0} CARDS \u00b7 ${currentData.stats.totalDays || 0} DAYS`
+      : '';
 
-    const chipRows = Math.ceil((shareData.links || []).length / 3);
-    const contentH = Math.max(H_BASE, 180 + bodyLines.length * 24 + chipRows * 32 + 80);
+    const bodyBg = t.contentBg;
+    const codeBg = t.text === '#ffffff' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.04)';
+    const tableBorder = t.border;
+    const thBg = t.text === '#ffffff' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.03)';
+    const hrBorder = t.border;
 
-    canvas.width = W * scale;
-    canvas.height = contentH * scale;
-    canvas.style.width = Math.min(W, window.innerWidth - 40) + 'px';
-    canvas.style.height = Math.min(contentH, window.innerHeight - 160) * (Math.min(W, window.innerWidth - 40) / W) + 'px';
-    ctx.scale(scale, scale);
+    return `
+      <div class="memex-sc-card" style="background:${t.background}">
+        <div class="memex-sc-card-inner">
+          <div class="memex-sc-header">
+            <span class="memex-sc-source" style="background:${t.chipBg};color:${t.chipText}">${src}</span>
+            <span class="memex-sc-date" style="color:${t.secondary}">${dateStr}</span>
+          </div>
+          <div class="memex-sc-title" style="color:${t.text}">${currentData.title || currentData.slug || ''}</div>
+          <div class="memex-sc-body" style="color:${t.secondary};background:${bodyBg};
+            --sc-code-bg:${codeBg};--sc-table-border:${tableBorder};--sc-th-bg:${thBg};--sc-hr:${hrBorder}">
+            <style>
+              .memex-sc-body code { background: var(--sc-code-bg); }
+              .memex-sc-body pre { background: var(--sc-code-bg); }
+              .memex-sc-body th, .memex-sc-body td { border: 1px solid var(--sc-table-border); }
+              .memex-sc-body th { background: var(--sc-th-bg); }
+              .memex-sc-body blockquote { border-left-color: ${t.accent}; }
+              .memex-sc-body hr { border-top: 1px solid var(--sc-hr); }
+            </style>
+            ${bodyHtml}
+          </div>
+          ${links ? `<div class="memex-sc-links">${links}</div>` : ''}
+          <div class="memex-sc-divider" style="background:${t.border}"></div>
+          <div class="memex-sc-footer">
+            <span class="memex-sc-stats" style="color:${t.brand}">${stats}</span>
+            <span class="memex-sc-brand" style="color:${t.brand}">memex</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }
 
-    // Background
-    ctx.fillStyle = t.bg;
-    ctx.beginPath();
-    ctx.roundRect(0, 0, W, contentH, 16);
-    ctx.fill();
+  function render() {
+    const cardHtml = renderCard();
+    const actionsHtml = `<div class="memex-sc-actions">
+      ${onCancel ? '<button class="memex-sc-btn secondary" data-action="cancel">Cancel</button>' : ''}
+      <button class="memex-sc-btn primary" data-action="export">Download</button>
+    </div>`;
+    container.innerHTML = `<div class="memex-sc-root">${pickerHtml}${cardHtml}${actionsHtml}</div>`;
+    bindEvents();
+  }
 
-    // Quote mark
-    ctx.font = 'bold 48px Georgia, serif';
-    ctx.fillStyle = t.quote;
-    ctx.fillText('\u201C', 30, 62);
-
-    // Date
-    ctx.font = '12px -apple-system, sans-serif';
-    ctx.fillStyle = t.sub;
-    ctx.textAlign = 'right';
-    const dateStr = shareData.created ? shareData.created.slice(0, 10).replace(/-/g, '/') : '';
-    ctx.fillText(dateStr, W - 30, 42);
-    ctx.textAlign = 'left';
-
-    // Source badge
-    const src = (shareData.source || 'note').toLowerCase();
-    ctx.font = '600 10px -apple-system, sans-serif';
-    const badgeW = ctx.measureText(src.toUpperCase()).width + 14;
-    ctx.fillStyle = t.chipBg;
-    ctx.beginPath();
-    ctx.roundRect(30, 76, badgeW, 20, 10);
-    ctx.fill();
-    ctx.fillStyle = t.chipText;
-    ctx.fillText(src.toUpperCase(), 37, 90);
-
-    // Title
-    ctx.font = 'bold 18px -apple-system, sans-serif';
-    ctx.fillStyle = t.text;
-    let y = 120;
-    const titleLines = wrapText(ctx, shareData.title || shareData.slug, 30, y, W - 60, 24);
-    y += titleLines * 24 + 12;
-
-    // Body
-    ctx.font = '15px -apple-system, sans-serif';
-    ctx.fillStyle = t.sub;
-    bodyLines.forEach((l, i) => {
-      ctx.fillText(l, 30, y + i * 24);
-    });
-    y += bodyLines.length * 24 + 16;
-
-    // Link chips
-    if (shareData.links && shareData.links.length > 0) {
-      let chipX = 30;
-      let chipY = y;
-      ctx.font = '11px -apple-system, sans-serif';
-      shareData.links.forEach(link => {
-        const label = '[[' + link + ']]';
-        const cw = ctx.measureText(label).width + 16;
-        if (chipX + cw > W - 30) { chipX = 30; chipY += 28; }
-        ctx.fillStyle = t.chipBg;
-        ctx.beginPath();
-        ctx.roundRect(chipX, chipY, cw, 22, 11);
-        ctx.fill();
-        ctx.fillStyle = t.chipText;
-        ctx.fillText(label, chipX + 8, chipY + 15);
-        chipX += cw + 6;
+  function bindEvents() {
+    container.querySelectorAll('.memex-sc-thumb').forEach(thumb => {
+      thumb.addEventListener('click', () => {
+        currentTheme = thumb.dataset.theme;
+        container.querySelectorAll('.memex-sc-thumb').forEach(t => t.classList.remove('active'));
+        thumb.classList.add('active');
+        const cardEl = container.querySelector('.memex-sc-card');
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = renderCard();
+        cardEl.replaceWith(tempDiv.firstElementChild);
       });
-      y = chipY + 40;
-    }
-
-    // Divider
-    y = Math.max(y, contentH - 60);
-    ctx.strokeStyle = t.border;
-    ctx.lineWidth = 0.5;
-    ctx.beginPath();
-    ctx.moveTo(30, y); ctx.lineTo(W - 30, y);
-    ctx.stroke();
-
-    // Footer
-    y += 20;
-    ctx.font = '10px -apple-system, sans-serif';
-    ctx.fillStyle = t.brand;
-    ctx.letterSpacing = '1px';
-    const statsText = (shareData.totalCards || 0) + ' CARDS \u00b7 ' + (shareData.totalDays || 0) + ' DAYS';
-    ctx.fillText(statsText, 30, y);
-    ctx.textAlign = 'right';
-    ctx.font = '600 11px -apple-system, sans-serif';
-    ctx.fillText('memex', W - 30, y);
-    ctx.textAlign = 'left';
+    });
+    container.querySelector('[data-action="export"]')?.addEventListener('click', () => exportPng());
+    container.querySelector('[data-action="cancel"]')?.addEventListener('click', () => { if (onCancel) onCancel(); });
   }
+
+  async function exportPng() {
+    const cardEl = container.querySelector('.memex-sc-card');
+    if (!cardEl) return;
+    const h2c = await lazyLoadHtml2Canvas();
+    const canvas = await h2c(cardEl, { scale: 2, useCORS: true, backgroundColor: null });
+    canvas.toBlob(blob => {
+      if (onExport) {
+        onExport(blob, (currentData.slug || 'memex-card') + '.png');
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = (currentData.slug || 'memex-card') + '.png';
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    }, 'image/png');
+  }
+
+  render();
+
+  return {
+    setTheme(name) {
+      if (!themes[name]) return;
+      currentTheme = name;
+      render();
+    },
+    setData(newData) {
+      currentData = { ...newData };
+      render();
+    },
+    export: exportPng,
+    destroy() {
+      container.innerHTML = '';
+    },
+  };
+}
+
+  window.createShareCard = createShareCard;
+})();
+</script>
+
+<script>
+(function() {
+  let shareInstance = null;
 
   window.shareCard = async function(slug) {
-    shareSlug = slug;
-    // Get current theme
-    shareTheme = document.documentElement.getAttribute('data-theme') || 'forest';
-    // Update theme buttons
-    document.querySelectorAll('.share-theme-btn').forEach(b => b.classList.toggle('active', b.dataset.stheme === shareTheme));
-
-    // Load card data
     const res = await fetch('/api/cards/' + encodeURIComponent(slug));
     const raw = await res.text();
     const fmMatch = raw.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
@@ -1538,44 +1652,35 @@ body::-webkit-scrollbar { display: none; }
       if (createdM) created = createdM[1];
       if (sourceM) source = sourceM[1];
     }
-    // Extract [[links]]
     const linkRe = /\[\[([^\]]+)\]\]/g;
     let m;
     while ((m = linkRe.exec(body)) !== null) links.push(m[1]);
     links = [...new Set(links)];
 
-    // Get stats
     const statsCards = document.getElementById('stat-cards').textContent;
     const statsDays = document.getElementById('stat-days').textContent;
 
-    shareData = { slug, title, body, created, source, links, firstLine: body.split('\n')[0],
-      totalCards: parseInt(statsCards) || 0, totalDays: parseInt(statsDays) || 0 };
+    const appTheme = document.documentElement.getAttribute('data-theme') || 'forest';
+    const themeMap = { forest: 'aurora', sonoma: 'clean', sunset: 'ember', midnight: 'spectrum' };
+    const shareTheme = themeMap[appTheme] || 'aurora';
 
-    renderShareCard();
+    if (shareInstance) shareInstance.destroy();
+    shareInstance = createShareCard(document.getElementById('shareRoot'), {
+      data: {
+        slug, title, body, created, source, links,
+        stats: { totalCards: parseInt(statsCards) || 0, totalDays: parseInt(statsDays) || 0 },
+      },
+      theme: shareTheme,
+      markdownRenderer: window._memex.renderMarkdown,
+      onCancel: closeShare,
+    });
+
     document.getElementById('shareOverlay').classList.add('open');
-  };
-
-  window.setShareTheme = function(theme, btn) {
-    shareTheme = theme;
-    document.querySelectorAll('.share-theme-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    renderShareCard();
-  };
-
-  window.downloadShare = function() {
-    const canvas = document.getElementById('shareCanvas');
-    canvas.toBlob(blob => {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = (shareSlug || 'memex-card') + '.png';
-      a.click();
-      URL.revokeObjectURL(url);
-    }, 'image/png');
   };
 
   window.closeShare = function() {
     document.getElementById('shareOverlay').classList.remove('open');
+    if (shareInstance) { shareInstance.destroy(); shareInstance = null; }
   };
 })();
 </script>
