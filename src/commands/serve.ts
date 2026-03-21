@@ -42,6 +42,7 @@ export async function serveCommand(port: number): Promise<Server> {
               created: String(data.created || ""),
               modified: String(data.modified || ""),
               source: String(data.source || ""),
+              category: String(data.category || ""),
               firstLine,
               links,
             };

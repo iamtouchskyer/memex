@@ -959,6 +959,11 @@ body::-webkit-scrollbar { display: none; }
   const searchInput = document.getElementById('search');
 
   const sourceColors = { retro: 'retro', manual: 'manual', organize: 'organize' };
+  const categoryColors = {
+    frontend: '#ff9500', architecture: '#007aff', devops: '#34c759',
+    bugfix: '#ff3b30', integration: '#af52de', review: '#5ac8fa',
+    backend: '#5856d6', security: '#ff2d55', infra: '#ff9500',
+  };
 
   // ---- Keyboard shortcut ----
   document.addEventListener('keydown', (e) => {
@@ -1180,13 +1185,18 @@ body::-webkit-scrollbar { display: none; }
       '<span class="chip" data-link="' + esc(l) + '">[[' + esc(l) + ']]</span>'
     ).join('');
     const isExpanded = expandedSlug === c.slug;
+    const cat = (c.category || '').toLowerCase();
     const src = (c.source || '').toLowerCase();
-    const badgeClass = sourceColors[src] || 'default';
-    const badgeLabel = src || 'note';
+    const catColor = categoryColors[cat];
+    const badgeLabel = cat || src || 'note';
+    const badgeClass = cat ? '' : (sourceColors[src] || 'default');
+    const badgeStyle = catColor ? 'background:' + catColor + '18;color:' + catColor : '';
+    const srcLabel = cat && src ? src : '';
     const delay = Math.min(index * 0.03, 0.6);
     return '<div class="card' + (isExpanded ? ' expanded' : '') + '" data-slug="' + esc(c.slug) + '" id="card-' + esc(c.slug) + '" style="animation-delay:' + delay + 's">'
       + '<div class="card-header">'
-      + '<span class="source-badge ' + badgeClass + '">' + esc(badgeLabel) + '</span>'
+      + '<span class="source-badge ' + badgeClass + '"' + (badgeStyle ? ' style="' + badgeStyle + '"' : '') + '>' + esc(badgeLabel) + '</span>'
+      + (srcLabel ? '<span class="card-dot">\u00b7</span><span class="card-time" style="opacity:0.5">' + esc(srcLabel) + '</span>' : '')
       + '<span class="card-dot">\u00b7</span>'
       + '<span class="card-time">' + esc(time || c.created?.slice(0,10) || '') + '</span>'
       + '</div>'
