@@ -102,7 +102,7 @@ const STYLES = `
 .memex-sc-thumb-label { font-size: 9px; color: rgba(255,255,255,0.5); font-weight: 500; text-align: center; }
 .memex-sc-skel { border-radius: 1px; }
 .memex-sc-card {
-  width: 420px; border-radius: 16px; overflow: hidden;
+  max-width: 420px; width: 100%; border-radius: 16px; overflow: hidden;
   box-shadow: 0 8px 32px rgba(0,0,0,0.12);
 }
 .memex-sc-card-inner { padding: 30px; overflow-wrap: break-word; word-break: break-word; }
@@ -269,8 +269,12 @@ export function createShareCard(container, options = {}) {
   async function exportPng() {
     const cardEl = container.querySelector('.memex-sc-card');
     if (!cardEl) return;
+    // Fix width for consistent export size
+    const origWidth = cardEl.style.width;
+    cardEl.style.width = '420px';
     const h2c = await lazyLoadHtml2Canvas();
     const canvas = await h2c(cardEl, { scale: 2, useCORS: true, backgroundColor: null });
+    cardEl.style.width = origWidth;
     canvas.toBlob(blob => {
       if (onExport) {
         onExport(blob, (currentData.slug || 'memex-card') + '.png');
