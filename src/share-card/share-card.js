@@ -113,11 +113,12 @@ const STYLES = `
 .memex-sc-title { font-size: 18px; font-weight: 700; margin-bottom: 12px; line-height: 1.4; }
 .memex-sc-body {
   font-size: 14px; line-height: 1.7; margin-bottom: 16px; border-radius: 8px; padding: 12px;
+  overflow-wrap: break-word; word-break: break-word;
 }
 .memex-sc-body p { margin-bottom: 8px; }
 .memex-sc-body p:last-child { margin-bottom: 0; }
 .memex-sc-body pre { padding: 8px 12px; border-radius: 6px; overflow-x: auto; font-size: 12px; margin: 8px 0; background: var(--sc-code-bg); }
-.memex-sc-body code { font-size: 12px; padding: 1px 5px; border-radius: 3px; background: var(--sc-code-bg); }
+.memex-sc-body code { font-size: 12px; padding: 1px 5px; border-radius: 3px; background: var(--sc-code-bg); overflow-wrap: break-word; }
 .memex-sc-body pre code { padding: 0; background: none; }
 .memex-sc-body table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 12px; }
 .memex-sc-body th, .memex-sc-body td { padding: 6px 10px; text-align: left; border: 1px solid var(--sc-table-border); }

@@ -209,4 +209,21 @@ describe("createShareCard", () => {
     const inlineStyles = cardEl!.querySelectorAll("style");
     expect(inlineStyles.length).toBe(0);
   });
+
+  // Word-wrap / overflow tests
+  it("body has overflow-wrap for CJK text wrapping", () => {
+    createShareCard(container, { data: sampleData });
+    const styleEl = document.getElementById("memex-sc-styles");
+    const css = styleEl!.textContent!;
+    expect(css).toContain(".memex-sc-body");
+    expect(css).toContain("overflow-wrap: break-word");
+  });
+
+  it("inline code has overflow-wrap for mixed CJK + code content", () => {
+    createShareCard(container, { data: sampleData });
+    const styleEl = document.getElementById("memex-sc-styles");
+    const css = styleEl!.textContent!;
+    // The .memex-sc-body code rule should include overflow-wrap
+    expect(css).toMatch(/\.memex-sc-body code\s*\{[^}]*overflow-wrap:\s*break-word/);
+  });
 });
