@@ -69,6 +69,7 @@ program
       process.stderr.write(result.error! + "\n");
       process.exit(1);
     }
+    process.stdout.write(`Card '${slug}' written.\n`);
   });
 
 program
@@ -91,6 +92,7 @@ program
       process.stderr.write(result.error! + "\n");
       process.exit(1);
     }
+    process.stdout.write(`Card '${slug}' archived.\n`);
   });
 
 program

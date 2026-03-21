@@ -34,11 +34,19 @@ describe("readCommand", () => {
     expect(result.error).toContain("Card not found: missing");
   });
 
-  it("finds card in subdirectory", async () => {
+  it("finds card in subdirectory using full slug path", async () => {
+    await mkdir(join(tmpDir, "cards", "sub"), { recursive: true });
+    await writeFile(join(tmpDir, "cards", "sub", "nested.md"), "content");
+    // slug must include the subdirectory prefix
+    const result = await readCommand(store, "sub/nested");
+    expect(result.success).toBe(true);
+    expect(result.content).toBe("content");
+  });
+
+  it("returns error when reading subdirectory card with bare basename", async () => {
     await mkdir(join(tmpDir, "cards", "sub"), { recursive: true });
     await writeFile(join(tmpDir, "cards", "sub", "nested.md"), "content");
     const result = await readCommand(store, "nested");
-    expect(result.success).toBe(true);
-    expect(result.content).toBe("content");
+    expect(result.success).toBe(false);
   });
 });

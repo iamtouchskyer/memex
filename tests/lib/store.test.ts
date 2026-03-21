@@ -31,7 +31,7 @@ describe("CardStore", () => {
 
       const files = await store.scanAll();
       const slugs = files.map((f) => f.slug).sort();
-      expect(slugs).toEqual(["a", "b"]);
+      expect(slugs).toEqual(["a", "sub/b"]);
     });
 
     it("returns empty array when no cards", async () => {
@@ -50,8 +50,17 @@ describe("CardStore", () => {
     it("finds card by slug in subdirectory", async () => {
       await mkdir(join(cardsDir, "sub"), { recursive: true });
       await writeFile(join(cardsDir, "sub", "nested.md"), "content");
-      const path = await store.resolve("nested");
+      // slug must include the subdirectory path
+      const path = await store.resolve("sub/nested");
       expect(path).toBe(join(cardsDir, "sub", "nested.md"));
+    });
+
+    it("does NOT find card by basename alone when stored in subdirectory", async () => {
+      await mkdir(join(cardsDir, "sub"), { recursive: true });
+      await writeFile(join(cardsDir, "sub", "nested.md"), "content");
+      // bare basename lookup should return null (no ambiguity)
+      const path = await store.resolve("nested");
+      expect(path).toBeNull();
     });
 
     it("returns null when card not found", async () => {
