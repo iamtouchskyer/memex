@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { writeCommand } from "../../src/commands/write.js";
+import { writeCommand, validateSlug } from "../../src/commands/write.js";
 import { CardStore } from "../../src/lib/store.js";
 import { parseFrontmatter } from "../../src/lib/parser.js";
 
@@ -79,5 +79,84 @@ Body.`;
     expect(written).not.toContain("2026-03-18T00:00:00.000Z");
     // Should contain clean YYYY-MM-DD
     expect(written).toContain("created: '2026-03-18'");
+  });
+
+  it("rejects empty slug", async () => {
+    const input = `---
+title: Empty Slug Test
+created: 2026-03-21
+source: test
+---
+body`;
+    const result = await writeCommand(store, "", input);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("empty");
+  });
+
+  it("rejects whitespace-only slug", async () => {
+    const input = `---
+title: Whitespace Slug
+created: 2026-03-21
+source: test
+---
+body`;
+    const result = await writeCommand(store, "   ", input);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects slug with reserved characters", async () => {
+    const input = `---
+title: Reserved Chars
+created: 2026-03-21
+source: test
+---
+body`;
+    const result = await writeCommand(store, "my:card", input);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("reserved");
+  });
+});
+
+describe("validateSlug", () => {
+  it("accepts valid kebab-case slugs", () => {
+    expect(validateSlug("my-card")).toBeNull();
+    expect(validateSlug("my-card-123")).toBeNull();
+  });
+
+  it("accepts valid subdirectory slugs", () => {
+    expect(validateSlug("sub/my-card")).toBeNull();
+    expect(validateSlug("a/b/c")).toBeNull();
+  });
+
+  it("accepts slugs with unicode (e.g. CJK)", () => {
+    // Unicode slugs are allowed but not recommended
+    expect(validateSlug("我的卡片")).toBeNull();
+  });
+
+  it("rejects empty string", () => {
+    expect(validateSlug("")).not.toBeNull();
+  });
+
+  it("rejects whitespace-only string", () => {
+    expect(validateSlug("   ")).not.toBeNull();
+  });
+
+  it("rejects slug of only dots/slashes", () => {
+    expect(validateSlug(".")).not.toBeNull();
+    expect(validateSlug("..")).not.toBeNull();
+    expect(validateSlug("/")).not.toBeNull();
+    expect(validateSlug("./")).not.toBeNull();
+  });
+
+  it("rejects slug with empty path segment", () => {
+    expect(validateSlug("a//b")).not.toBeNull();
+    expect(validateSlug("/foo")).not.toBeNull();
+  });
+
+  it("rejects slug with reserved OS characters", () => {
+    expect(validateSlug("my:card")).not.toBeNull();
+    expect(validateSlug('my"card')).not.toBeNull();
+    expect(validateSlug("my*card")).not.toBeNull();
+    expect(validateSlug("my?card")).not.toBeNull();
   });
 });
