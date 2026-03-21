@@ -1322,10 +1322,13 @@ body::-webkit-scrollbar { display: none; }
 (function() {
 // share-card.js — Independent ES module for memex share cards
 // Zero dependencies. markdownRenderer and html2canvas are injected/lazy-loaded.
+// NOTE: title/slug are inserted via innerHTML without escaping — safe for local
+// CLI tool where all data is user-authored, but must be sanitized if reused with
+// untrusted input.
 
 const themes = {
   clean: {
-    name: 'Clean',
+    name: 'Clean', isDark: false,
     background: '#ffffff',
     text: '#1d1d1f',
     secondary: '#666666',
@@ -1335,9 +1338,11 @@ const themes = {
     border: 'rgba(0,0,0,0.08)',
     brand: '#999999',
     contentBg: 'rgba(255,255,255,0.9)',
+    codeBg: 'rgba(0,0,0,0.04)',
+    thBg: 'rgba(0,0,0,0.03)',
   },
   aurora: {
-    name: 'Aurora',
+    name: 'Aurora', isDark: false,
     background: 'radial-gradient(138% 32% at 70% 33%, #fff 2%, rgba(255,160,247,0.3) 50%, rgba(212,245,255,0.5)), #fff',
     text: '#1d1d1f',
     secondary: '#666666',
@@ -1347,9 +1352,11 @@ const themes = {
     border: 'rgba(0,0,0,0.06)',
     brand: '#999999',
     contentBg: 'transparent',
+    codeBg: 'rgba(0,0,0,0.04)',
+    thBg: 'rgba(0,0,0,0.03)',
   },
   spectrum: {
-    name: 'Spectrum',
+    name: 'Spectrum', isDark: true,
     background: 'linear-gradient(145deg, #c676ff 0%, #654cff 41%, #405eff 75%, #007fff 99%)',
     text: '#ffffff',
     secondary: 'rgba(255,255,255,0.7)',
@@ -1359,9 +1366,11 @@ const themes = {
     border: 'rgba(255,255,255,0.15)',
     brand: 'rgba(255,255,255,0.4)',
     contentBg: 'rgba(0,0,0,0.15)',
+    codeBg: 'rgba(255,255,255,0.1)',
+    thBg: 'rgba(255,255,255,0.08)',
   },
   ocean: {
-    name: 'Ocean',
+    name: 'Ocean', isDark: true,
     background: '#235ff5',
     text: '#ffffff',
     secondary: 'rgba(255,255,255,0.7)',
@@ -1371,9 +1380,11 @@ const themes = {
     border: 'rgba(255,255,255,0.15)',
     brand: 'rgba(255,255,255,0.4)',
     contentBg: 'rgba(0,0,0,0.1)',
+    codeBg: 'rgba(255,255,255,0.1)',
+    thBg: 'rgba(255,255,255,0.08)',
   },
   ember: {
-    name: 'Ember',
+    name: 'Ember', isDark: true,
     background: '#fb7933',
     text: '#ffffff',
     secondary: 'rgba(255,255,255,0.75)',
@@ -1383,9 +1394,11 @@ const themes = {
     border: 'rgba(255,255,255,0.18)',
     brand: 'rgba(255,255,255,0.45)',
     contentBg: 'rgba(0,0,0,0.08)',
+    codeBg: 'rgba(255,255,255,0.1)',
+    thBg: 'rgba(255,255,255,0.08)',
   },
   frost: {
-    name: 'Frost',
+    name: 'Frost', isDark: false,
     background: '#e7f1fa',
     text: '#1d1d1f',
     secondary: '#5a7a9a',
@@ -1395,6 +1408,8 @@ const themes = {
     border: 'rgba(17,31,44,0.08)',
     brand: '#8aa0b8',
     contentBg: 'rgba(255,255,255,0.5)',
+    codeBg: 'rgba(0,0,0,0.04)',
+    thBg: 'rgba(0,0,0,0.03)',
   },
 };
 
@@ -1426,21 +1441,21 @@ const STYLES = `
 }
 .memex-sc-body p { margin-bottom: 8px; }
 .memex-sc-body p:last-child { margin-bottom: 0; }
-.memex-sc-body pre { padding: 8px 12px; border-radius: 6px; overflow-x: auto; font-size: 12px; margin: 8px 0; }
-.memex-sc-body code { font-size: 12px; padding: 1px 5px; border-radius: 3px; }
+.memex-sc-body pre { padding: 8px 12px; border-radius: 6px; overflow-x: auto; font-size: 12px; margin: 8px 0; background: var(--sc-code-bg); }
+.memex-sc-body code { font-size: 12px; padding: 1px 5px; border-radius: 3px; background: var(--sc-code-bg); }
 .memex-sc-body pre code { padding: 0; background: none; }
 .memex-sc-body table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 12px; }
-.memex-sc-body th, .memex-sc-body td { padding: 6px 10px; text-align: left; }
-.memex-sc-body th { font-weight: 600; }
+.memex-sc-body th, .memex-sc-body td { padding: 6px 10px; text-align: left; border: 1px solid var(--sc-table-border); }
+.memex-sc-body th { font-weight: 600; background: var(--sc-th-bg); }
 .memex-sc-body img { max-width: 100%; border-radius: 6px; margin: 8px 0; }
 .memex-sc-body ul, .memex-sc-body ol { padding-left: 20px; margin: 8px 0; }
 .memex-sc-body li { margin-bottom: 4px; }
-.memex-sc-body blockquote { margin: 8px 0; padding: 4px 12px; border-left: 3px solid; }
+.memex-sc-body blockquote { margin: 8px 0; padding: 4px 12px; border-left: 3px solid var(--sc-accent); }
 .memex-sc-body h1, .memex-sc-body h2, .memex-sc-body h3 { margin: 12px 0 6px; font-weight: 600; }
 .memex-sc-body h1 { font-size: 18px; }
 .memex-sc-body h2 { font-size: 16px; }
 .memex-sc-body h3 { font-size: 14px; }
-.memex-sc-body hr { border: none; margin: 12px 0; }
+.memex-sc-body hr { border: none; border-top: 1px solid var(--sc-table-border); margin: 12px 0; }
 .memex-sc-links { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
 .memex-sc-chip { font-size: 11px; padding: 3px 10px; border-radius: 11px; }
 .memex-sc-divider { height: 1px; margin-bottom: 16px; }
@@ -1475,8 +1490,7 @@ function lazyLoadHtml2Canvas() {
 }
 
 function buildSkeleton(t) {
-  const light = t.text === '#ffffff' || t.text === 'rgba(255,255,255,0.9)';
-  const barColor = light ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.12)';
+  const barColor = t.isDark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.12)';
   return `
     <div class="memex-sc-skel" style="width:60%;height:5px;background:${barColor};margin-bottom:6px"></div>
     <div class="memex-sc-skel" style="width:100%;height:3px;background:${barColor};margin-bottom:3px"></div>
@@ -1526,12 +1540,6 @@ function createShareCard(container, options = {}) {
       ? `${currentData.stats.totalCards || 0} CARDS \u00b7 ${currentData.stats.totalDays || 0} DAYS`
       : '';
 
-    const bodyBg = t.contentBg;
-    const codeBg = t.text === '#ffffff' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.04)';
-    const tableBorder = t.border;
-    const thBg = t.text === '#ffffff' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.03)';
-    const hrBorder = t.border;
-
     return `
       <div class="memex-sc-card" style="background:${t.background}">
         <div class="memex-sc-card-inner">
@@ -1540,16 +1548,8 @@ function createShareCard(container, options = {}) {
             <span class="memex-sc-date" style="color:${t.secondary}">${dateStr}</span>
           </div>
           <div class="memex-sc-title" style="color:${t.text}">${currentData.title || currentData.slug || ''}</div>
-          <div class="memex-sc-body" style="color:${t.secondary};background:${bodyBg};
-            --sc-code-bg:${codeBg};--sc-table-border:${tableBorder};--sc-th-bg:${thBg};--sc-hr:${hrBorder}">
-            <style>
-              .memex-sc-body code { background: var(--sc-code-bg); }
-              .memex-sc-body pre { background: var(--sc-code-bg); }
-              .memex-sc-body th, .memex-sc-body td { border: 1px solid var(--sc-table-border); }
-              .memex-sc-body th { background: var(--sc-th-bg); }
-              .memex-sc-body blockquote { border-left-color: ${t.accent}; }
-              .memex-sc-body hr { border-top: 1px solid var(--sc-hr); }
-            </style>
+          <div class="memex-sc-body" style="color:${t.secondary};background:${t.contentBg};
+            --sc-code-bg:${t.codeBg};--sc-table-border:${t.border};--sc-th-bg:${t.thBg};--sc-accent:${t.accent}">
             ${bodyHtml}
           </div>
           ${links ? `<div class="memex-sc-links">${links}</div>` : ''}
