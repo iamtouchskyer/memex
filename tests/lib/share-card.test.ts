@@ -63,6 +63,25 @@ describe("createShareCard", () => {
     expect(thumbs.length).toBe(6);
   });
 
+  it("renders theme name labels", () => {
+    createShareCard(container, { data: sampleData });
+    const labels = container.querySelectorAll(".memex-sc-thumb-label");
+    expect(labels.length).toBe(6);
+    const names = Array.from(labels).map(l => l.textContent);
+    expect(names).toContain("Clean");
+    expect(names).toContain("Aurora");
+    expect(names).toContain("Midnight");
+  });
+
+  it("picker is rendered below card", () => {
+    createShareCard(container, { data: sampleData });
+    const root = container.querySelector(".memex-sc-root")!;
+    const children = Array.from(root.children);
+    const cardIdx = children.findIndex(c => c.classList.contains("memex-sc-card"));
+    const pickerIdx = children.findIndex(c => c.classList.contains("memex-sc-picker"));
+    expect(pickerIdx).toBeGreaterThan(cardIdx);
+  });
+
   it("marks initial theme as active", () => {
     createShareCard(container, { data: sampleData, theme: "ocean" });
     const active = container.querySelector(".memex-sc-thumb.active");
@@ -165,17 +184,17 @@ describe("createShareCard", () => {
   // Theme switching via picker click
   it("clicking theme thumbnail switches active state", () => {
     createShareCard(container, { data: sampleData, theme: "clean" });
-    const oceanThumb = container.querySelector('[data-theme="ocean"]') as HTMLElement;
-    oceanThumb.click();
-    expect(oceanThumb.classList.contains("active")).toBe(true);
-    const cleanThumb = container.querySelector('[data-theme="clean"]');
+    const oceanWrap = container.querySelector('.memex-sc-thumb-wrap[data-theme="ocean"]') as HTMLElement;
+    oceanWrap.click();
+    expect(oceanWrap.querySelector('.memex-sc-thumb')!.classList.contains("active")).toBe(true);
+    const cleanThumb = container.querySelector('.memex-sc-thumb-wrap[data-theme="clean"] .memex-sc-thumb');
     expect(cleanThumb!.classList.contains("active")).toBe(false);
   });
 
   it("clicking theme thumbnail updates card background", () => {
     createShareCard(container, { data: sampleData, theme: "clean" });
-    const spectrumThumb = container.querySelector('[data-theme="spectrum"]') as HTMLElement;
-    spectrumThumb.click();
+    const spectrumWrap = container.querySelector('.memex-sc-thumb-wrap[data-theme="spectrum"]') as HTMLElement;
+    spectrumWrap.click();
     const card = container.querySelector(".memex-sc-card");
     expect(card!.getAttribute("style")).toContain("linear-gradient");
   });

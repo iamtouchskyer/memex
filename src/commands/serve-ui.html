@@ -1322,9 +1322,6 @@ body::-webkit-scrollbar { display: none; }
 (function() {
 // share-card.js — Independent ES module for memex share cards
 // Zero dependencies. markdownRenderer and html2canvas are injected/lazy-loaded.
-// NOTE: title/slug are inserted via innerHTML without escaping — safe for local
-// CLI tool where all data is user-authored, but must be sanitized if reused with
-// untrusted input.
 
 const themes = {
   clean: {
@@ -1337,7 +1334,7 @@ const themes = {
     chipText: '#007aff',
     border: 'rgba(0,0,0,0.08)',
     brand: '#999999',
-    contentBg: 'rgba(255,255,255,0.9)',
+    contentBg: '#ffffff',
     codeBg: 'rgba(0,0,0,0.04)',
     thBg: 'rgba(0,0,0,0.03)',
   },
@@ -1383,19 +1380,19 @@ const themes = {
     codeBg: 'rgba(255,255,255,0.1)',
     thBg: 'rgba(255,255,255,0.08)',
   },
-  ember: {
-    name: 'Ember', isDark: true,
-    background: '#fb7933',
-    text: '#ffffff',
-    secondary: 'rgba(255,255,255,0.75)',
-    accent: '#ffd6b0',
-    chipBg: 'rgba(255,255,255,0.18)',
-    chipText: 'rgba(255,255,255,0.9)',
-    border: 'rgba(255,255,255,0.18)',
-    brand: 'rgba(255,255,255,0.45)',
-    contentBg: 'rgba(0,0,0,0.08)',
-    codeBg: 'rgba(255,255,255,0.1)',
-    thBg: 'rgba(255,255,255,0.08)',
+  midnight: {
+    name: 'Midnight', isDark: true,
+    background: '#1c1c1e',
+    text: 'rgba(255,255,255,0.9)',
+    secondary: 'rgba(255,255,255,0.55)',
+    accent: '#5ac8fa',
+    chipBg: 'rgba(90,200,250,0.12)',
+    chipText: '#5ac8fa',
+    border: 'rgba(255,255,255,0.1)',
+    brand: 'rgba(255,255,255,0.25)',
+    contentBg: 'rgba(255,255,255,0.05)',
+    codeBg: 'rgba(255,255,255,0.08)',
+    thBg: 'rgba(255,255,255,0.06)',
   },
   frost: {
     name: 'Frost', isDark: false,
@@ -1407,7 +1404,7 @@ const themes = {
     chipText: '#007aff',
     border: 'rgba(17,31,44,0.08)',
     brand: '#8aa0b8',
-    contentBg: 'rgba(255,255,255,0.5)',
+    contentBg: 'rgba(255,255,255,0.85)',
     codeBg: 'rgba(0,0,0,0.04)',
     thBg: 'rgba(0,0,0,0.03)',
   },
@@ -1415,15 +1412,17 @@ const themes = {
 
 const STYLES = `
 .memex-sc-root { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-.memex-sc-picker { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px; max-width: 420px; }
+.memex-sc-picker { display: flex; gap: 8px; margin-top: 16px; justify-content: center; }
+.memex-sc-thumb-wrap { display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; }
 .memex-sc-thumb {
-  aspect-ratio: 3/4; border-radius: 8px; padding: 8px; cursor: pointer;
+  width: 48px; height: 36px; border-radius: 6px; padding: 5px; cursor: pointer;
   border: 2px solid transparent; transition: border-color 0.15s, transform 0.15s;
-  display: flex; flex-direction: column; gap: 3px; box-sizing: border-box;
+  display: flex; flex-direction: column; gap: 2px; box-sizing: border-box;
 }
-.memex-sc-thumb:hover { transform: scale(1.05); }
+.memex-sc-thumb:hover { transform: scale(1.08); }
 .memex-sc-thumb.active { border-color: #007aff; }
-.memex-sc-skel { border-radius: 2px; }
+.memex-sc-thumb-label { font-size: 9px; color: rgba(255,255,255,0.5); font-weight: 500; text-align: center; }
+.memex-sc-skel { border-radius: 1px; }
 .memex-sc-card {
   width: 420px; border-radius: 16px; overflow: hidden;
   box-shadow: 0 8px 32px rgba(0,0,0,0.12);
@@ -1493,11 +1492,9 @@ function lazyLoadHtml2Canvas() {
 function buildSkeleton(t) {
   const barColor = t.isDark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.12)';
   return `
-    <div class="memex-sc-skel" style="width:60%;height:5px;background:${barColor};margin-bottom:6px"></div>
-    <div class="memex-sc-skel" style="width:100%;height:3px;background:${barColor};margin-bottom:3px"></div>
-    <div class="memex-sc-skel" style="width:100%;height:3px;background:${barColor};margin-bottom:3px"></div>
-    <div class="memex-sc-skel" style="width:40%;height:3px;background:${barColor};margin-bottom:6px"></div>
-    <div class="memex-sc-skel" style="width:100%;height:20px;background:${barColor};border-radius:2px"></div>
+    <div class="memex-sc-skel" style="width:50%;height:3px;background:${barColor};margin-bottom:3px"></div>
+    <div class="memex-sc-skel" style="width:100%;height:2px;background:${barColor};margin-bottom:2px"></div>
+    <div class="memex-sc-skel" style="width:80%;height:2px;background:${barColor}"></div>
   `;
 }
 
@@ -1524,8 +1521,9 @@ function createShareCard(container, options = {}) {
   // Build picker
   let pickerHtml = '<div class="memex-sc-picker">';
   for (const [key, t] of Object.entries(themes)) {
-    const border = t.border !== 'rgba(0,0,0,0.08)' ? '' : 'border:1px solid rgba(0,0,0,0.08);';
-    pickerHtml += `<div class="memex-sc-thumb${key === currentTheme ? ' active' : ''}" data-theme="${key}" style="background:${t.background};${border}">${buildSkeleton(t)}</div>`;
+    const needsBorder = !t.isDark && !t.background.includes('gradient');
+    const borderStyle = needsBorder ? 'border:1px solid rgba(0,0,0,0.1);' : '';
+    pickerHtml += `<div class="memex-sc-thumb-wrap" data-theme="${key}"><div class="memex-sc-thumb${key === currentTheme ? ' active' : ''}" data-theme="${key}" style="background:${t.background};${borderStyle}">${buildSkeleton(t)}</div><span class="memex-sc-thumb-label">${t.name}</span></div>`;
   }
   pickerHtml += '</div>';
 
@@ -1570,16 +1568,16 @@ function createShareCard(container, options = {}) {
       ${onCancel ? '<button class="memex-sc-btn secondary" data-action="cancel">Cancel</button>' : ''}
       <button class="memex-sc-btn primary" data-action="export">Download</button>
     </div>`;
-    container.innerHTML = `<div class="memex-sc-root">${pickerHtml}${cardHtml}${actionsHtml}</div>`;
+    container.innerHTML = `<div class="memex-sc-root">${cardHtml}${pickerHtml}${actionsHtml}</div>`;
     bindEvents();
   }
 
   function bindEvents() {
-    container.querySelectorAll('.memex-sc-thumb').forEach(thumb => {
-      thumb.addEventListener('click', () => {
-        currentTheme = thumb.dataset.theme;
+    container.querySelectorAll('.memex-sc-thumb-wrap').forEach(wrap => {
+      wrap.addEventListener('click', () => {
+        currentTheme = wrap.dataset.theme;
         container.querySelectorAll('.memex-sc-thumb').forEach(t => t.classList.remove('active'));
-        thumb.classList.add('active');
+        wrap.querySelector('.memex-sc-thumb').classList.add('active');
         const cardEl = container.querySelector('.memex-sc-card');
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = renderCard();
@@ -1661,7 +1659,7 @@ function createShareCard(container, options = {}) {
     const statsDays = document.getElementById('stat-days').textContent;
 
     const appTheme = document.documentElement.getAttribute('data-theme') || 'forest';
-    const themeMap = { forest: 'aurora', sonoma: 'clean', sunset: 'ember', midnight: 'spectrum' };
+    const themeMap = { forest: 'aurora', sonoma: 'clean', sunset: 'frost', midnight: 'midnight' };
     const shareTheme = themeMap[appTheme] || 'aurora';
 
     if (shareInstance) shareInstance.destroy();
