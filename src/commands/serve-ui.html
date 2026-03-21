@@ -1887,6 +1887,9 @@ body::-webkit-scrollbar { display: none; }
           navigateGraphNode(c.dataset.link);
         });
       });
+
+      // Reposition after expand to fit in viewport
+      requestAnimationFrame(() => positionCardPanel(node));
     });
 
     // Bind header chips to navigate graph
@@ -1913,20 +1916,25 @@ body::-webkit-scrollbar { display: none; }
     const [sx, sy] = toScreen(node.x, node.y);
     const panelW = 360;
     const vw = window.innerWidth, vh = window.innerHeight;
+    const m = 16;
+    const maxH = vh - m * 2;
 
     // Prefer right of node, fallback to left
-    let left = sx + node.displayR * cam.zoom + 16;
-    if (left + panelW > vw - 16) {
-      left = sx - node.displayR * cam.zoom - panelW - 16;
+    let left = sx + node.displayR * cam.zoom + m;
+    if (left + panelW > vw - m) {
+      left = sx - node.displayR * cam.zoom - panelW - m;
     }
-    left = Math.max(16, Math.min(vw - panelW - 16, left));
+    left = Math.max(m, Math.min(vw - panelW - m, left));
 
-    // Vertically align to node, clamp to viewport
+    // Clamp vertically: keep entire panel in viewport
+    const panelH = Math.min(cardPanel.scrollHeight || 200, maxH);
     let top = sy - 40;
-    top = Math.max(16, Math.min(vh - 100, top));
+    top = Math.min(top, vh - panelH - m);
+    top = Math.max(m, top);
 
     cardPanel.style.left = left + 'px';
     cardPanel.style.top = top + 'px';
+    cardPanel.style.maxHeight = maxH + 'px';
   }
 
   function hidePopover() {
