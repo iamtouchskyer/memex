@@ -47,21 +47,32 @@ export async function initCommand(dir: string): Promise<InitResult> {
     // file doesn't exist, will create
   }
 
-  if (existing.includes("## Memory (memex)")) {
-    return { success: true, output: "AGENTS.md already has memex section. No changes made." };
-  }
+  // Replace old memex section if present, otherwise append
+  const memexHeader = "## Memory (memex)";
+  let content: string;
+  let action: string;
 
-  const content = existing
-    ? existing.trimEnd() + "\n\n" + AGENTS_SECTION
-    : AGENTS_SECTION;
+  if (existing.includes(memexHeader)) {
+    // Find the memex section and replace it (up to next ## or end of file)
+    const start = existing.indexOf(memexHeader);
+    const afterStart = existing.indexOf("\n## ", start + memexHeader.length);
+    const before = existing.slice(0, start).trimEnd();
+    const after = afterStart >= 0 ? existing.slice(afterStart) : "";
+    content = (before ? before + "\n\n" : "") + AGENTS_SECTION + (after ? "\n" + after : "");
+    action = "Updated memex section in AGENTS.md.";
+  } else if (existing) {
+    content = existing.trimEnd() + "\n\n" + AGENTS_SECTION;
+    action = "Appended memex section to AGENTS.md.";
+  } else {
+    content = AGENTS_SECTION;
+    action = "Created AGENTS.md with memex section.";
+  }
 
   await writeFile(filePath, content, "utf-8");
 
   return {
     success: true,
-    output: (existing
-      ? "Appended memex section to AGENTS.md."
-      : "Created AGENTS.md with memex section.")
+    output: action
       + "\n\nTip: To sync cards across devices, run: memex sync --init <your-git-remote>",
   };
 }
