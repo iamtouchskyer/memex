@@ -7,7 +7,7 @@ export function activate(context: vscode.ExtensionContext) {
         new vscode.McpStdioServerDefinition(
           "Memex",
           "npx",
-          ["-y", "@touchskyer/memex", "mcp"],
+          ["-y", "@touchskyer/memex@latest", "mcp"],
           {},
           "0.1.8"
         ),
