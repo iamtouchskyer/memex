@@ -29,6 +29,8 @@ export interface SyncStatus {
 
 export interface SyncAdapter {
   init(remote?: string): Promise<void>;
+  pull(): Promise<SyncResult>;
+  push(): Promise<SyncResult>;
   sync(): Promise<SyncResult>;
   status(): Promise<SyncStatus>;
 }
@@ -152,73 +154,49 @@ export class GitAdapter implements SyncAdapter {
     });
   }
 
-  async sync(): Promise<SyncResult> {
+  async pull(): Promise<SyncResult> {
     const config = await readSyncConfig(this.home);
     if (!config.remote) {
-      return {
-        success: false,
-        message: "Not initialized. Run `memex sync --init` first.",
-      };
+      return { success: false, message: "Not configured." };
     }
-
-    // Fetch remote first
     try {
       await execFile("git", ["-C", this.home, "fetch", "origin"]);
     } catch {
-      // Offline is OK — just sync local
+      return { success: true, message: "Offline, using local data." };
     }
+    try {
+      await execFile("git", ["-C", this.home, "merge", "origin/main", "--no-edit"]);
+    } catch {
+      try { await execFile("git", ["-C", this.home, "merge", "--abort"]); } catch { /* ignore */ }
+      return { success: false, message: "Merge conflict. Resolve manually in " + this.home };
+    }
+    return { success: true, message: "Pulled latest." };
+  }
 
-    // Stage and commit local changes
+  async push(): Promise<SyncResult> {
+    const config = await readSyncConfig(this.home);
+    if (!config.remote) {
+      return { success: false, message: "Not configured." };
+    }
     await execFile("git", ["-C", this.home, "add", "-A"]);
     try {
       const ts = new Date().toISOString();
-      await execFile("git", [
-        "-C",
-        this.home,
-        "commit",
-        "-m",
-        `memex sync ${ts}`,
-      ]);
-    } catch {
-      // Nothing to commit — that's fine
-    }
-
-    // Merge remote changes (merge is better than rebase for markdown)
-    try {
-      await execFile("git", [
-        "-C",
-        this.home,
-        "merge",
-        "origin/main",
-        "--no-edit",
-      ]);
-    } catch {
-      // Merge conflict — abort and report
-      try {
-        await execFile("git", ["-C", this.home, "merge", "--abort"]);
-      } catch {
-        /* ignore */
-      }
-      return {
-        success: false,
-        message: "Merge conflict. Resolve manually in " + this.home,
-      };
-    }
-
-    // Push
+      await execFile("git", ["-C", this.home, "commit", "-m", `memex sync ${ts}`]);
+    } catch { /* Nothing to commit */ }
     try {
       await execFile("git", ["-C", this.home, "push", "origin", "HEAD"]);
     } catch (err) {
-      return {
-        success: false,
-        message: `Push failed: ${(err as Error).message}`,
-      };
+      return { success: false, message: `Push failed: ${(err as Error).message}` };
     }
-
     config.lastSync = new Date().toISOString();
     await writeSyncConfig(this.home, config);
+    return { success: true, message: "Pushed." };
+  }
 
-    return { success: true, message: "Synced." };
+  async sync(): Promise<SyncResult> {
+    const pullResult = await this.pull();
+    if (!pullResult.success) return pullResult;
+    return this.push();
   }
 
   async status(): Promise<SyncStatus> {
@@ -243,5 +221,16 @@ export async function autoSync(home: string): Promise<void> {
     await adapter.sync();
   } catch (err) {
     process.stderr.write(`sync warning: ${(err as Error).message}\n`);
+  }
+}
+
+export async function autoFetch(home: string): Promise<void> {
+  const config = await readSyncConfig(home);
+  if (!config.remote) return; // silent no-op
+  try {
+    const adapter = new GitAdapter(home);
+    await adapter.pull();
+  } catch {
+    // silent — infrastructure, not business logic
   }
 }
