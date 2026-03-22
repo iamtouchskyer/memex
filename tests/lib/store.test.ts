@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, rm, mkdir, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CardStore } from "../../src/lib/store.js";
+import { CardStore, validateSlug } from "../../src/lib/store.js";
 
 describe("CardStore", () => {
   let tmpDir: string;
@@ -104,5 +104,93 @@ describe("CardStore", () => {
     it("throws when card not found", async () => {
       await expect(store.archiveCard("missing")).rejects.toThrow("Card not found: missing");
     });
+  });
+
+  describe("writeCard slug validation", () => {
+    it("rejects empty string slug", async () => {
+      await expect(store.writeCard("", "content")).rejects.toThrow("must not be empty");
+    });
+
+    it("rejects whitespace-only slug", async () => {
+      await expect(store.writeCard("   ", "content")).rejects.toThrow("must not be empty");
+    });
+
+    it("rejects tab-only slug", async () => {
+      await expect(store.writeCard("\t\t", "content")).rejects.toThrow("must not be empty");
+    });
+
+    it("rejects slug consisting only of dots", async () => {
+      await expect(store.writeCard("..", "content")).rejects.toThrow("only of dots and slashes");
+    });
+
+    it("rejects slug consisting only of dots and slashes", async () => {
+      await expect(store.writeCard("./.", "content")).rejects.toThrow("only of dots and slashes");
+    });
+
+    it("rejects OS reserved characters", async () => {
+      for (const ch of [':', '*', '?', '"', '<', '>', '|']) {
+        await expect(store.writeCard(`bad${ch}slug`, "content")).rejects.toThrow("reserved characters");
+      }
+    });
+
+    it("rejects leading slash", async () => {
+      await expect(store.writeCard("/foo", "content")).rejects.toThrow("empty path segments");
+    });
+
+    it("rejects trailing slash", async () => {
+      await expect(store.writeCard("foo/", "content")).rejects.toThrow("empty path segments");
+    });
+
+    it("rejects consecutive slashes", async () => {
+      await expect(store.writeCard("a//b", "content")).rejects.toThrow("empty path segments");
+    });
+
+    it("rejects dot path segments", async () => {
+      await expect(store.writeCard("a/../b", "content")).rejects.toThrow("must not be '.' or '..'");
+    });
+
+    it("rejects ./foo relative path", async () => {
+      await expect(store.writeCard("./foo", "content")).rejects.toThrow("must not be '.' or '..'");
+    });
+
+    it("accepts valid simple slug", async () => {
+      await store.writeCard("valid-slug", "content");
+      const written = await readFile(join(cardsDir, "valid-slug.md"), "utf-8");
+      expect(written).toBe("content");
+    });
+
+    it("accepts valid slug with subdirectory", async () => {
+      await store.writeCard("sub/card", "content");
+      const written = await readFile(join(cardsDir, "sub", "card.md"), "utf-8");
+      expect(written).toBe("content");
+    });
+  });
+});
+
+describe("validateSlug (unit)", () => {
+  it("throws on empty string", () => {
+    expect(() => validateSlug("")).toThrow("must not be empty");
+  });
+
+  it("throws on whitespace-only", () => {
+    expect(() => validateSlug("   ")).toThrow("must not be empty");
+  });
+
+  it("throws on dots-only", () => {
+    expect(() => validateSlug("..")).toThrow("only of dots and slashes");
+  });
+
+  it("throws on reserved chars", () => {
+    expect(() => validateSlug("a:b")).toThrow("reserved characters");
+  });
+
+  it("throws on empty path segments", () => {
+    expect(() => validateSlug("a//b")).toThrow("empty path segments");
+  });
+
+  it("does not throw on valid slug", () => {
+    expect(() => validateSlug("my-card")).not.toThrow();
+    expect(() => validateSlug("sub/my-card")).not.toThrow();
+    expect(() => validateSlug("a.b.c")).not.toThrow();
   });
 });

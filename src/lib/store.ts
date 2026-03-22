@@ -1,6 +1,48 @@
 import { readdir, readFile, writeFile, rename, mkdir } from "node:fs/promises";
 import { join, basename, dirname, resolve } from "node:path";
 
+// Characters not allowed in slugs (OS-reserved or dangerous)
+const RESERVED_CHARS = /[:*?"<>|]/;
+
+/**
+ * Validate a slug before writing. Throws on invalid slugs.
+ *
+ * Rules:
+ *  - Must not be empty or whitespace-only after trimming
+ *  - Must not consist solely of dots and/or slashes
+ *  - Must not contain OS-reserved characters (: * ? " < > |)
+ *  - Must not contain empty path segments (e.g. "a//b", "/foo", "foo/")
+ */
+export function validateSlug(slug: string): void {
+  const trimmed = slug.trim();
+
+  if (trimmed.length === 0) {
+    throw new Error("Invalid slug: must not be empty or whitespace-only");
+  }
+
+  // Reject slugs that are only dots and/or slashes (e.g. "..", "./.", "///")
+  if (/^[./]+$/.test(trimmed)) {
+    throw new Error("Invalid slug: must not consist only of dots and slashes");
+  }
+
+  if (RESERVED_CHARS.test(trimmed)) {
+    throw new Error("Invalid slug: contains reserved characters (: * ? \" < > |)");
+  }
+
+  // Reject leading/trailing slashes or consecutive slashes (empty path segments)
+  if (trimmed.startsWith("/") || trimmed.endsWith("/") || trimmed.includes("//")) {
+    throw new Error("Invalid slug: must not contain empty path segments");
+  }
+
+  // Reject path segments that are just dots (e.g. "a/../b", "./foo")
+  const segments = trimmed.split("/");
+  for (const seg of segments) {
+    if (seg === "." || seg === "..") {
+      throw new Error("Invalid slug: path segments must not be '.' or '..'");
+    }
+  }
+}
+
 interface ScannedCard {
   slug: string;
   path: string;
@@ -68,6 +110,7 @@ export class CardStore {
   }
 
   async writeCard(slug: string, content: string): Promise<void> {
+    validateSlug(slug);
     const existing = await this.resolve(slug);
     const targetPath = existing ?? join(this.cardsDir, `${slug}.md`);
     this.assertSafePath(targetPath);
