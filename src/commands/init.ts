@@ -21,6 +21,8 @@ This project uses memex for persistent agent memory across sessions.
 | \`memex_organize\` | Analyze link graph for orphans and hubs |
 | \`memex_pull\` | Pull latest cards from remote |
 | \`memex_push\` | Push local cards to remote |
+| \`memex_links\` | Show link graph stats for a card or all cards |
+| \`memex_archive\` | Move outdated cards to archive |
 
 ### Cross-device sync
 To sync cards across devices, the USER (not the agent) should run in terminal:
@@ -73,6 +75,6 @@ export async function initCommand(dir: string): Promise<InitResult> {
   return {
     success: true,
     output: action
-      + "\n\nTip: To sync cards across devices, run: memex sync --init <your-git-remote>",
+      + "\n\nTip: To sync cards across devices, run: memex sync --init && memex sync on",
   };
 }

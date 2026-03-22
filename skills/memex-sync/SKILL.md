@@ -13,7 +13,7 @@ Sync your Zettelkasten cards across devices using git.
 - `memex sync --init` — auto-create a private GitHub repo via `gh` CLI
 - `memex sync` — pull remote changes, commit local changes, push
 - `memex sync --status` — show sync configuration and last sync time
-- `memex sync --auto on|off` — enable/disable auto-sync after every write/archive
+- `memex sync on|off` — enable/disable auto-sync after every write/archive
 
 ## Process
 
@@ -53,6 +53,6 @@ Tell the user the result. If sync failed, show the error message.
 
 ## Rules
 
-- **Never force-push** — `memex sync` uses `git pull --rebase` then `git push`
+- **Never force-push** — `memex sync` uses `git fetch` + `git merge` then `git push`
 - **On conflict** — report the error and tell the user to resolve manually in `~/.memex`
 - **Auto-sync** — only suggest `--auto on` if the user asks about it; don't enable by default

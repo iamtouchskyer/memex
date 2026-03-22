@@ -199,7 +199,7 @@ AIコーディングエージェントのための永続メモリシステム。
 | プラットフォーム | 方法 |
 |---------------|------|
 | **VS Code / Copilot** | 拡張機能がマーケットプレイスから自動更新 |
-| **Claude Code** | `/plugin update memex` |
+| **Claude Code** | `/plugin uninstall memex` → `/plugin install memex@memex` |
 | **Cursor / Codex / Windsurf** | `npm update -g @touchskyer/memex` |
 
 ---
@@ -250,7 +250,7 @@ AI 코딩 에이전트를 위한 영구 메모리 시스템. 에이전트가 세
 | 플랫폼 | 방법 |
 |--------|------|
 | **VS Code / Copilot** | 확장 프로그램이 마켓플레이스에서 자동 업데이트 |
-| **Claude Code** | `/plugin update memex` |
+| **Claude Code** | `/plugin uninstall memex` → `/plugin install memex@memex` |
 | **Cursor / Codex / Windsurf** | `npm update -g @touchskyer/memex` |
 
 ---
