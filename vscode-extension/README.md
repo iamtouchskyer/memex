@@ -12,16 +12,20 @@ No vector database, no embeddings — just markdown files your agent (and you) c
 
 ## MCP Tools
 
-This extension registers a MCP server that gives your AI agent 6 tools:
+This extension registers a MCP server that gives your AI agent 10 tools:
 
 | Tool | Description |
 |------|-------------|
+| `memex_recall` | Retrieve memory index or search (call at task start) |
+| `memex_retro` | Save an atomic insight card (call at task end) |
+| `memex_organize` | Analyze card network for maintenance |
+| `memex_pull` | Pull latest cards from remote |
+| `memex_push` | Push local cards to remote |
 | `memex_search` | Search cards by keyword |
 | `memex_read` | Read a card's full content |
 | `memex_write` | Write or update a card |
 | `memex_links` | Show link graph stats |
 | `memex_archive` | Archive a card |
-| `memex_init` | Add memex workflow to AGENTS.md |
 
 ## Graph View
 
@@ -39,7 +43,6 @@ Explore your knowledge network with an interactive force-directed graph:
 1. Install this extension from the VS Code Marketplace
 2. The MCP server starts automatically
 3. Ask your AI agent to "remember" something — it will use memex tools
-4. Run `memex init` in your project to add workflow instructions to AGENTS.md
 
 ## Sync Across Devices
 

@@ -47,8 +47,6 @@ All platforms share the same `~/.memex/cards/` directory. A card written in Clau
 
 That's it — no extra setup needed. The MCP tool descriptions tell your agent when to recall and retro.
 
-**Optional:** Run `memex init` in a project directory to create an `AGENTS.md` with explicit workflow instructions, which can help some editors.
-
 ### Upgrade
 
 | Platform | How |
@@ -61,9 +59,11 @@ That's it — no extra setup needed. The MCP tool descriptions tell your agent w
 
 All clients read and write the same `~/.memex/cards/` directory. Sync across devices with git:
 
+> **Prerequisite:** Auto-create requires [GitHub CLI](https://cli.github.com/) (`gh auth login`). Or pass your own repo URL to skip this.
+
 ```bash
-memex sync --init                # auto-creates private memex-cards repo on GitHub (requires gh CLI)
-memex sync --init <repo-url>     # or specify your own repo URL
+memex sync --init                # auto-creates private memex-cards repo on GitHub
+memex sync --init <repo-url>     # or specify your own repo URL (no gh CLI needed)
 memex sync on                    # enable auto-sync after every write
 memex sync                       # manual sync
 memex sync off                   # disable auto-sync
@@ -92,7 +92,6 @@ memex archive <slug>          # archive a card
 memex serve                   # visual timeline UI
 memex sync                    # sync via git
 memex mcp                     # start MCP server (stdio)
-memex init                    # add memex section to AGENTS.md
 ```
 
 ### How it works
@@ -148,8 +147,6 @@ AI 编程 agent 的持久记忆系统。让你的 agent 跨会话记住学到的
 | **Windsurf / 其他** | `npm install -g @touchskyer/memex`，然后添加 MCP server：命令 `memex`，参数 `["mcp"]` |
 
 安装完成，无需额外配置。MCP 工具描述会自动告诉 agent 何时 recall 和 retro。
-
-**可选：** 在项目目录运行 `memex init` 可创建 `AGENTS.md`，为部分编辑器提供额外的工作流指引。
 
 ---
 

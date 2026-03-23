@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { join } from "path";
-import { existsSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { execSync } from "child_process";
 
 function findNode(): string {
@@ -49,6 +49,7 @@ function findNode(): string {
 export function activate(context: vscode.ExtensionContext) {
   const cliPath = join(context.extensionPath, "node_modules", "@touchskyer", "memex", "dist", "cli.js");
   const nodeBin = findNode();
+  const pkgJson = JSON.parse(readFileSync(join(context.extensionPath, "package.json"), "utf-8"));
 
   context.subscriptions.push(
     vscode.lm.registerMcpServerDefinitionProvider("memex.mcpServer", {
@@ -58,7 +59,7 @@ export function activate(context: vscode.ExtensionContext) {
           nodeBin,
           [cliPath, "mcp"],
           {},
-          "0.1.21"
+          pkgJson.version
         ),
       ],
       resolveMcpServerDefinition: async (server) => server,

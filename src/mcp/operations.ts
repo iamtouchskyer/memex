@@ -71,7 +71,7 @@ export function registerOperations(
     // Upsell sync if not configured
     const config = await readSyncConfig(home);
     const tip = !config.remote
-      ? "\n\nTip: To sync cards across devices, tell the user to run in terminal: memex sync --init && memex sync on"
+      ? "\n\nTip: To sync cards across devices, tell the user to run in terminal: npx @touchskyer/memex sync --init && npx @touchskyer/memex sync on"
       : "";
 
     return { content: [{ type: "text" as const, text: `Card '${slug}' saved.${tip}` }] };
@@ -93,14 +93,14 @@ export function registerOperations(
 
   // ---- pull ----
   server.registerTool("memex_pull", {
-    description: "Pull latest cards from remote to get changes from other devices. If sync is not configured, DO NOT attempt to set it up yourself — tell the user to run these exact commands in their terminal: memex sync --init && memex sync on (this auto-creates a private 'memex-cards' repo on GitHub).",
+    description: "Pull latest cards from remote to get changes from other devices. If sync is not configured, DO NOT attempt to set it up yourself — tell the user to run these exact commands in their terminal: npx @touchskyer/memex sync --init && npx @touchskyer/memex sync on (this auto-creates a private 'memex-cards' repo on GitHub, requires gh CLI).",
     inputSchema: z.object({}),
   }, async () => {
     await hooks.run("pre", "pull");
 
     const config = await readSyncConfig(home);
     if (!config.remote) {
-      return { content: [{ type: "text" as const, text: "Sync not configured. DO NOT set this up yourself. Tell the user to run in their terminal: memex sync --init && memex sync on" }] };
+      return { content: [{ type: "text" as const, text: "Sync not configured. DO NOT set this up yourself. Tell the user to run in their terminal: npx @touchskyer/memex sync --init && npx @touchskyer/memex sync on" }] };
     }
     const adapter = new GitAdapter(home);
     const result = await adapter.pull();
@@ -112,14 +112,14 @@ export function registerOperations(
 
   // ---- push ----
   server.registerTool("memex_push", {
-    description: "Push local cards to remote to sync to other devices. If sync is not configured, DO NOT attempt to set it up yourself — tell the user to run these exact commands in their terminal: memex sync --init && memex sync on (this auto-creates a private 'memex-cards' repo on GitHub).",
+    description: "Push local cards to remote to sync to other devices. If sync is not configured, DO NOT attempt to set it up yourself — tell the user to run these exact commands in their terminal: npx @touchskyer/memex sync --init && npx @touchskyer/memex sync on (this auto-creates a private 'memex-cards' repo on GitHub, requires gh CLI).",
     inputSchema: z.object({}),
   }, async () => {
     await hooks.run("pre", "push");
 
     const config = await readSyncConfig(home);
     if (!config.remote) {
-      return { content: [{ type: "text" as const, text: "Sync not configured. DO NOT set this up yourself. Tell the user to run in their terminal: memex sync --init && memex sync on" }] };
+      return { content: [{ type: "text" as const, text: "Sync not configured. DO NOT set this up yourself. Tell the user to run in their terminal: npx @touchskyer/memex sync --init && npx @touchskyer/memex sync on" }] };
     }
     const adapter = new GitAdapter(home);
     const result = await adapter.push();
