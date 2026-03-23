@@ -98,13 +98,30 @@ export class GitAdapter implements SyncAdapter {
           "Provide a repo URL or install gh CLI (https://cli.github.com)."
         );
       }
-      const { stdout } = await execFile("gh", [
-        "repo",
-        "create",
-        "memex-cards",
-        "--private",
-      ]);
-      url = stdout.trim();
+      // Check if gh is authenticated
+      try {
+        await execFile("gh", ["auth", "status"]);
+      } catch {
+        throw new Error(
+          "gh CLI is not authenticated. Run `gh auth login` first."
+        );
+      }
+      // Try to reuse existing repo first, create only if it doesn't exist
+      try {
+        const { stdout } = await execFile("gh", [
+          "repo", "view", "memex-cards", "--json", "url", "-q", ".url",
+        ]);
+        url = stdout.trim();
+      } catch {
+        // Repo doesn't exist — create it
+        const { stdout } = await execFile("gh", [
+          "repo", "create", "memex-cards", "--private",
+        ]);
+        url = stdout.trim();
+      }
+      if (!url) {
+        throw new Error("Failed to get repo URL from gh CLI.");
+      }
     }
 
     // Init git repo if not already
@@ -132,7 +149,7 @@ export class GitAdapter implements SyncAdapter {
       }
     }
 
-    // Initial commit and push
+    // Commit local content first
     await execFile("git", ["-C", this.home, "add", "-A"]);
     try {
       await execFile("git", [
@@ -145,6 +162,25 @@ export class GitAdapter implements SyncAdapter {
     } catch {
       // Nothing to commit is OK
     }
+
+    // Fetch remote — if it has existing commits, merge them before pushing
+    try {
+      await execFile("git", ["-C", this.home, "fetch", "origin"]);
+      // Check if remote has any commits
+      try {
+        await execFile("git", ["-C", this.home, "rev-parse", "origin/main"]);
+        // Remote has commits — merge with allow-unrelated-histories
+        await execFile("git", [
+          "-C", this.home, "merge", "origin/main",
+          "--allow-unrelated-histories", "--no-edit",
+        ]);
+      } catch {
+        // No remote branch yet — fresh repo, push will create it
+      }
+    } catch {
+      // Fetch failed (offline / empty remote) — push will handle it
+    }
+
     await execFile("git", ["-C", this.home, "push", "-u", "origin", "HEAD"]);
 
     await writeSyncConfig(this.home, {
@@ -201,9 +237,28 @@ export class GitAdapter implements SyncAdapter {
 
   async status(): Promise<SyncStatus> {
     const config = await readSyncConfig(this.home);
+
+    // Fallback: if .sync.json has no remote, check git remote directly
+    let remote = config.remote;
+    if (!remote) {
+      try {
+        const { stdout } = await execFile("git", [
+          "-C", this.home, "remote", "get-url", "origin",
+        ]);
+        remote = stdout.trim() || undefined;
+        // Self-heal: persist the discovered remote into .sync.json
+        if (remote) {
+          config.remote = remote;
+          await writeSyncConfig(this.home, config);
+        }
+      } catch {
+        // No git remote configured — genuinely unconfigured
+      }
+    }
+
     return {
-      configured: !!config.remote,
-      remote: config.remote,
+      configured: !!remote,
+      remote,
       adapter: config.adapter,
       auto: config.auto,
       lastSync: config.lastSync,
