@@ -2,7 +2,7 @@
   "name": "memex-mcp",
   "displayName": "Memex - Agent Memory",
   "description": "Persistent Zettelkasten memory for AI coding agents. Works with GitHub Copilot, Cursor, and any MCP-compatible client.",
-  "version": "0.1.21",
+  "version": "0.1.22",
   "publisher": "touchskyer",
   "repository": {
     "type": "git",
