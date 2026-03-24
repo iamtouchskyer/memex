@@ -9,6 +9,16 @@ import { CardStore } from "../lib/store.js";
 import { parseFrontmatter, extractLinks } from "../lib/parser.js";
 import { readSyncConfig } from "../lib/sync.js";
 
+/** Convert gray-matter date values (Date object or string) to YYYY-MM-DD string */
+function dateStr(val: unknown): string {
+  if (!val) return "";
+  if (val instanceof Date) return val.toISOString().slice(0, 10);
+  const s = String(val);
+  // If it looks like an ISO string, extract just the date part
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) return s.slice(0, 10);
+  return s;
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -80,8 +90,8 @@ export async function serveCommand(port: number): Promise<Server | null> {
             return {
               slug: c.slug,
               title: String(data.title || c.slug),
-              created: String(data.created || ""),
-              modified: String(data.modified || ""),
+              created: dateStr(data.created),
+              modified: dateStr(data.modified),
               source: String(data.source || ""),
               category: String(data.category || ""),
               firstLine,
@@ -155,8 +165,8 @@ export async function serveCommand(port: number): Promise<Server | null> {
             results.push({
               slug: c.slug,
               title,
-              created: String(data.created || ""),
-              modified: String(data.modified || ""),
+              created: dateStr(data.created),
+              modified: dateStr(data.modified),
               source: String(data.source || ""),
               firstLine,
               links,
