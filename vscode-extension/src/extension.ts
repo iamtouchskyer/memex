@@ -1,48 +1,75 @@
 import * as vscode from "vscode";
 import { join } from "path";
-import { existsSync, readFileSync } from "fs";
+import { existsSync, readFileSync, readdirSync } from "fs";
 import { execSync } from "child_process";
 
-function findNode(): string {
-  // 1. Try VS Code's bundled Node.js (most reliable, no external dependency)
-  const vscodeNode = (process as any).execPath;
-  if (vscodeNode && existsSync(vscodeNode)) {
-    // VS Code runs extensions via Electron which IS Node.js compatible
-    // But Electron binary may not work as standalone node for CLI scripts
-    // So we only use it as fallback
-  }
+/** Sort version strings like "v18.0.0", "v20.1.0" by semver (highest last) */
+function semverSort(versions: string[]): string[] {
+  return versions.sort((a, b) => {
+    const pa = a.replace(/^v/, "").split(".").map(Number);
+    const pb = b.replace(/^v/, "").split(".").map(Number);
+    for (let i = 0; i < 3; i++) {
+      if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) - (pb[i] || 0);
+    }
+    return 0;
+  });
+}
 
-  // 2. Try system node
+function findNode(): string {
+  const isWin = process.platform === "win32";
+
+  // 1. Try system node via platform-appropriate command
   try {
-    const nodePath = execSync("which node", { encoding: "utf-8" }).trim();
+    const whichCmd = isWin ? "where node" : "which node";
+    const nodePath = execSync(whichCmd, { encoding: "utf-8" }).trim().split(/\r?\n/)[0];
     if (nodePath && existsSync(nodePath)) return nodePath;
   } catch {}
 
-  // 3. Common Node.js install locations
-  const commonPaths = [
-    "/usr/local/bin/node",
-    "/opt/homebrew/bin/node",
-    "/usr/bin/node",
-    join(process.env.HOME || "", ".nvm/versions/node"),
-  ];
-
-  for (const p of commonPaths) {
-    if (p.includes(".nvm")) {
-      // Find latest nvm version
+  // 2. Common Node.js install locations (platform-specific)
+  if (isWin) {
+    const winPaths = [
+      join(process.env.ProgramFiles || "C:\\Program Files", "nodejs", "node.exe"),
+      join(process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)", "nodejs", "node.exe"),
+    ];
+    for (const p of winPaths) {
+      if (existsSync(p)) return p;
+    }
+    // Windows nvm
+    const nvmHome = process.env.NVM_HOME || join(process.env.APPDATA || "", "nvm");
+    if (existsSync(nvmHome)) {
       try {
-        const versions = execSync(`ls -1 "${p}"`, { encoding: "utf-8" }).trim().split("\n");
-        const latest = versions.pop();
+        const versions: string[] = readdirSync(nvmHome).filter((d: string) => d.startsWith("v"));
+        const latest = semverSort(versions).pop();
         if (latest) {
-          const nvmNode = join(p, latest, "bin/node");
+          const nvmNode = join(nvmHome, latest, "node.exe");
           if (existsSync(nvmNode)) return nvmNode;
         }
       } catch {}
-    } else if (existsSync(p)) {
-      return p;
+    }
+  } else {
+    const unixPaths = [
+      "/usr/local/bin/node",
+      "/opt/homebrew/bin/node",
+      "/usr/bin/node",
+    ];
+    for (const p of unixPaths) {
+      if (existsSync(p)) return p;
+    }
+    // Unix nvm
+    const nvmDir = join(process.env.HOME || "", ".nvm/versions/node");
+    if (existsSync(nvmDir)) {
+      try {
+        const versions: string[] = readdirSync(nvmDir);
+        const latest = semverSort(versions).pop();
+        if (latest) {
+          const nvmNode = join(nvmDir, latest, "bin/node");
+          if (existsSync(nvmNode)) return nvmNode;
+        }
+      } catch {}
     }
   }
 
-  // 4. Fallback: hope "node" is on PATH
+  // 3. Fallback: hope "node" is on PATH
   return "node";
 }
 

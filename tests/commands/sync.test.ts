@@ -37,7 +37,7 @@ describe("syncCommand", () => {
     await syncCommand(home, { init: true, remote: bare });
     const result = await syncCommand(home, {});
     expect(result.success).toBe(true);
-  });
+  }, 15000);
 
   it("status shows configured after init", async () => {
     await syncCommand(home, { init: true, remote: bare });

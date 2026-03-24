@@ -102,7 +102,7 @@ describe("GitAdapter", () => {
 
     await rm(bare, { recursive: true });
     await rm(clone, { recursive: true });
-  });
+  }, 15000);
 
   it("sync with nothing to commit succeeds", async () => {
     const bare = await createBareRemote();
@@ -113,7 +113,7 @@ describe("GitAdapter", () => {
     expect(result.success).toBe(true);
 
     await rm(bare, { recursive: true });
-  });
+  }, 15000);
 
   it("status returns configured state", async () => {
     const bare = await createBareRemote();

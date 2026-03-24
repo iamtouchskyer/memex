@@ -151,6 +151,9 @@ export class GitAdapter implements SyncAdapter {
       await execFile("git", ["init", this.home]);
     }
 
+    // Prevent CRLF issues on Windows
+    await execFile("git", ["-C", this.home, "config", "core.autocrlf", "false"]);
+
     // Ensure .gitignore exists with local-only files
     const gitignorePath = join(this.home, ".gitignore");
     const ignoreEntries = [".sync.json", ".last-organize"];

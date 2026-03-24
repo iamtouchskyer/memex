@@ -12,7 +12,7 @@
   ],
   "scripts": {
     "build": "tsc",
-    "postbuild": "cp src/commands/serve-ui.html dist/commands/ && cp -r src/share-card dist/",
+    "postbuild": "node scripts/postbuild.mjs",
     "prepublishOnly": "npm run build",
     "test": "vitest run",
     "test:watch": "vitest"

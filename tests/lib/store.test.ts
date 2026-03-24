@@ -193,4 +193,32 @@ describe("validateSlug (unit)", () => {
     expect(() => validateSlug("sub/my-card")).not.toThrow();
     expect(() => validateSlug("a.b.c")).not.toThrow();
   });
+
+  it("throws on backslash path traversal", () => {
+    expect(() => validateSlug("a\\..\\b")).toThrow("path segments must not be");
+  });
+
+  it("throws on leading backslash", () => {
+    expect(() => validateSlug("\\foo")).toThrow("empty path segments");
+  });
+
+  it("throws on trailing backslash", () => {
+    expect(() => validateSlug("foo\\")).toThrow("empty path segments");
+  });
+
+  it("throws on double backslash", () => {
+    expect(() => validateSlug("a\\\\b")).toThrow("empty path segments");
+  });
+
+  it("throws on dots-and-backslashes-only", () => {
+    expect(() => validateSlug(".\\..")).toThrow("only of dots and slashes");
+  });
+
+  it("throws on leading slash", () => {
+    expect(() => validateSlug("/foo")).toThrow("empty path segments");
+  });
+
+  it("throws on dot-dot path segment with forward slash", () => {
+    expect(() => validateSlug("a/../b")).toThrow("path segments must not be");
+  });
 });
