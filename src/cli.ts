@@ -15,6 +15,7 @@ import { linksCommand } from "./commands/links.js";
 import { archiveCommand } from "./commands/archive.js";
 import { serveCommand } from "./commands/serve.js";
 import { syncCommand } from "./commands/sync.js";
+import { importCommand } from "./commands/import.js";
 
 function getStore(): CardStore {
   const home = process.env.MEMEX_HOME || join(homedir(), ".memex");
@@ -149,6 +150,21 @@ program
     const transport = new StdioServerTransport();
     console.error("memex MCP server running on stdio");
     await server.connect(transport);
+  });
+
+program
+  .command("import [source]")
+  .description("Import memories from other tools (openclaw, ...)")
+  .option("--dry-run", "Preview without writing")
+  .option("--dir <path>", "Override source directory")
+  .action(async (source: string | undefined, opts: { dryRun?: boolean; dir?: string }) => {
+    const store = getStore();
+    const result = await importCommand(store, source, opts);
+    if (result.output) process.stdout.write(result.output + "\n");
+    if (!result.success) {
+      if (result.error) process.stderr.write(result.error + "\n");
+      process.exit(1);
+    }
   });
 
 program.parse();
