@@ -7,18 +7,24 @@
  *
  * Usage:
  *   node scripts/import-openclaw.mjs [--dry-run]
- *   MEMEX_HOME=~/.openclaw node scripts/import-openclaw.mjs
  */
 
-import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
-import { join, basename } from "node:path";
+import { readdir, readFile } from "node:fs/promises";
+import { join, basename, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { existsSync } from "node:fs";
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const OPENCLAW_MEMORY = join(homedir(), ".openclaw", "workspace", "memory");
 const MEMEX_HOME = process.env.MEMEX_HOME || join(homedir(), ".memex");
-const CARDS_DIR = join(MEMEX_HOME, "cards");
 const DRY_RUN = process.argv.includes("--dry-run");
+
+// Import CardStore from compiled dist (Windows needs pathToFileURL for ESM)
+import { pathToFileURL } from "node:url";
+const storeModule = await import(pathToFileURL(join(__dirname, "..", "dist", "lib", "store.js")).href);
+const { CardStore } = storeModule;
+const store = new CardStore(join(MEMEX_HOME, "cards"), join(MEMEX_HOME, "archive"));
 
 function slugify(text) {
   return text
@@ -58,19 +64,28 @@ function extractDateFromFilename(filename) {
   return match ? match[1] : null;
 }
 
+function yamlEscape(str) {
+  if (/[:#\[\]{}&*!|>'"%@`]/.test(str) || str.trim() !== str) {
+    return JSON.stringify(str);
+  }
+  return str;
+}
+
 function buildCard(date, title, body, siblingLinks) {
   const created = date || new Date().toISOString().slice(0, 10);
-  const source = "openclaw";
+  const tags = date
+    ? `[openclaw-memory, "${date}"]`
+    : `[openclaw-memory]`;
 
   const links = siblingLinks.length > 0
     ? `\nRelated: ${siblingLinks.map(s => `[[${s}]]`).join(" ")}`
     : "";
 
   return `---
-title: "${title.replace(/"/g, '\\"')}"
-created: ${created}
-source: ${source}
-tags: [openclaw-memory${date ? `, ${date}` : ""}]
+title: ${yamlEscape(title)}
+created: "${created}"
+source: openclaw
+tags: ${tags}
 ---
 ${body}${links}
 `;
@@ -81,8 +96,6 @@ async function main() {
     console.error(`OpenClaw memory directory not found: ${OPENCLAW_MEMORY}`);
     process.exit(1);
   }
-
-  await mkdir(CARDS_DIR, { recursive: true });
 
   const files = (await readdir(OPENCLAW_MEMORY))
     .filter(f => f.endsWith(".md"))
@@ -110,9 +123,10 @@ async function main() {
 
     for (let i = 0; i < sections.length; i++) {
       const slug = slugs[i];
-      const cardPath = join(CARDS_DIR, `${slug}.md`);
 
-      if (existsSync(cardPath)) {
+      // Check if card already exists via CardStore
+      const existing = await store.resolve(slug);
+      if (existing) {
         skippedCards++;
         continue;
       }
@@ -123,7 +137,7 @@ async function main() {
       if (DRY_RUN) {
         console.log(`  [dry-run] would write: ${slug}.md (${sections[i].title})`);
       } else {
-        await writeFile(cardPath, cardContent, "utf-8");
+        await store.writeCard(slug, cardContent);
         console.log(`  ✓ ${slug}.md`);
       }
       totalCards++;
@@ -131,7 +145,7 @@ async function main() {
   }
 
   console.log(`\nDone: ${totalCards} cards ${DRY_RUN ? "would be " : ""}created, ${skippedCards} skipped (already exist)`);
-  console.log(`Cards directory: ${CARDS_DIR}`);
+  console.log(`Cards directory: ${join(MEMEX_HOME, "cards")}`);
   if (!DRY_RUN) {
     console.log(`\nRun 'memex serve' to visualize!`);
   }
