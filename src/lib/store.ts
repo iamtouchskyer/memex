@@ -1,5 +1,5 @@
 import { readdir, readFile, writeFile, rename, mkdir } from "node:fs/promises";
-import { join, basename, dirname, resolve } from "node:path";
+import { join, basename, dirname, resolve, sep } from "node:path";
 
 // Characters not allowed in slugs (OS-reserved or dangerous)
 const RESERVED_CHARS = /[:*?"<>|]/;
@@ -104,7 +104,7 @@ export class CardStore {
   private assertSafePath(targetPath: string): void {
     const resolved = resolve(targetPath);
     const cardsResolved = resolve(this.cardsDir);
-    if (!resolved.startsWith(cardsResolved + "/") && resolved !== cardsResolved) {
+    if (!resolved.startsWith(cardsResolved + sep) && resolved !== cardsResolved) {
       throw new Error(`Invalid slug: path escapes cards directory`);
     }
   }
