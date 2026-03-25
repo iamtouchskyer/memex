@@ -1,6 +1,6 @@
 ---
 name: memex-retro
-description: After completing a task, distill insights into Zettelkasten cards. Use at the end of any task that produced learnings worth remembering.
+description: MUST invoke after completing any task involving code changes, architectural decisions, debugging, or non-trivial problem solving. Skipping retro means the next session starts from zero.
 ---
 
 # Memory Retro
