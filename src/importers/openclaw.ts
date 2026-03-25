@@ -82,11 +82,16 @@ export function generateSlugs(
   date: string | null,
   fallbackName: string
 ): string[] {
+  const seen = new Map<string, number>();
   return sections.map((s, i) => {
-    const base = date
+    let base = date
       ? `${date}-${slugify(s.title)}`
       : slugify(s.title);
-    return base || `${fallbackName}-section-${i}`;
+    base = base || `${fallbackName}-section-${i}`;
+
+    const count = seen.get(base) || 0;
+    seen.set(base, count + 1);
+    return count > 0 ? `${base}-${count + 1}` : base;
   });
 }
 

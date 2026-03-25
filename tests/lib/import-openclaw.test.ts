@@ -160,6 +160,20 @@ describe("generateSlugs", () => {
     const slugs = generateSlugs(sections, null, "some-file");
     expect(slugs[0]).toBe("some-file-section-0");
   });
+
+  it("deduplicates slugs for repeated H2 titles", () => {
+    const sections = [
+      { title: "Progress", body: "Morning" },
+      { title: "Progress", body: "Afternoon" },
+      { title: "Progress", body: "Evening" },
+    ];
+    const slugs = generateSlugs(sections, "2026-03-19", "fallback");
+    expect(slugs[0]).toBe("2026-03-19-progress");
+    expect(slugs[1]).toBe("2026-03-19-progress-2");
+    expect(slugs[2]).toBe("2026-03-19-progress-3");
+    // All unique
+    expect(new Set(slugs).size).toBe(3);
+  });
 });
 
 describe("OpenClawImporter (integration)", () => {
@@ -271,5 +285,36 @@ Fixed the bug.
     expect(data.title).toBe("Bug修复：phase_runner 无限循环");
     expect(typeof data.created).toBe("string");
     expect(data.source).toBe("openclaw");
+  });
+
+  it("does not silently drop sections with duplicate H2 titles", async () => {
+    await writeFile(join(memoryDir, "2026-03-19.md"), `# Day
+## Progress
+Morning update
+## Other
+Something else
+## Progress
+Afternoon update
+`);
+
+    const result = await importer.run({ store, sourceDir: memoryDir, onLog: () => {} });
+
+    expect(result.created).toBe(3);
+    expect(result.skipped).toBe(0);
+
+    const cards = readdirSync(join(memexHome, "cards"));
+    expect(cards).toHaveLength(3);
+
+    // Both "Progress" sections should exist as separate cards
+    const progressCards = cards.filter(c => c.includes("progress"));
+    expect(progressCards).toHaveLength(2);
+
+    // Content should be different
+    const contents = await Promise.all(
+      progressCards.map(c => readFile(join(memexHome, "cards", c), "utf-8"))
+    );
+    const bodies = contents.map(c => matter(c).content);
+    expect(bodies.some(b => b.includes("Morning update"))).toBe(true);
+    expect(bodies.some(b => b.includes("Afternoon update"))).toBe(true);
   });
 });
