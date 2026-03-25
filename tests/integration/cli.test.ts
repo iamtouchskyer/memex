@@ -78,4 +78,32 @@ Hello world.`;
       expect(e.stderr).toContain("Card not found");
     }
   });
+
+  it("reads nested slug when nestedSlugs is enabled", async () => {
+    await writeFile(join(tmpDir, ".memexrc"), JSON.stringify({ nestedSlugs: true }));
+    const card = `---
+title: Nested Card
+created: 2026-03-18
+source: manual
+---
+
+Nested content.`;
+
+    await run(`node ${CLI_PATH} write sub/test-card`, { env, input: card });
+
+    const { stdout } = await run(`node ${CLI_PATH} read sub/test-card`, { env });
+    expect(stdout).toContain("Nested Card");
+    expect(stdout).toContain("Nested content.");
+  });
+
+  it("lists nested cards when nestedSlugs is enabled", async () => {
+    await writeFile(join(tmpDir, ".memexrc"), JSON.stringify({ nestedSlugs: true }));
+    await mkdir(join(tmpDir, "cards", "sub"), { recursive: true });
+    await writeFile(
+      join(tmpDir, "cards", "sub", "nested.md"),
+      "---\ntitle: Nested\ncreated: 2026-03-18\nmodified: 2026-03-18\nsource: manual\n---\nContent."
+    );
+    const { stdout } = await run(`node ${CLI_PATH} search`, { env });
+    expect(stdout).toContain("sub/nested");
+  });
 });

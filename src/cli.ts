@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8"));
 import { CardStore } from "./lib/store.js";
+import { readConfig } from "./lib/config.js";
 import { writeCommand } from "./commands/write.js";
 import { readCommand } from "./commands/read.js";
 import { searchCommand } from "./commands/search.js";
@@ -17,9 +18,10 @@ import { serveCommand } from "./commands/serve.js";
 import { syncCommand } from "./commands/sync.js";
 import { importCommand } from "./commands/import.js";
 
-function getStore(): CardStore {
+async function getStore(): Promise<CardStore> {
   const home = process.env.MEMEX_HOME || join(homedir(), ".memex");
-  return new CardStore(join(home, "cards"), join(home, "archive"));
+  const config = await readConfig(home);
+  return new CardStore(join(home, "cards"), join(home, "archive"), config.nestedSlugs);
 }
 
 async function readStdin(): Promise<string> {
@@ -38,7 +40,7 @@ program
   .description("Full-text search cards (body only), or list all if no query")
   .option("-l, --limit <n>", "Max results to return", "10")
   .action(async (query: string | undefined, opts: { limit: string }) => {
-    const store = getStore();
+    const store = await getStore();
     const result = await searchCommand(store, query, { limit: parseInt(opts.limit) });
     if (result.output) process.stdout.write(result.output + "\n");
     process.exit(result.exitCode);
@@ -48,7 +50,7 @@ program
   .command("read <slug>")
   .description("Read a card's full content")
   .action(async (slug: string) => {
-    const store = getStore();
+    const store = await getStore();
     const result = await readCommand(store, slug);
     if (result.success) {
       process.stdout.write(result.content! + "\n");
@@ -62,7 +64,7 @@ program
   .command("write <slug>")
   .description("Write a card (content via stdin)")
   .action(async (slug: string) => {
-    const store = getStore();
+    const store = await getStore();
     const input = await readStdin();
     const result = await writeCommand(store, slug, input);
     if (!result.success) {
@@ -75,7 +77,7 @@ program
   .command("links [slug]")
   .description("Show link graph stats or specific card links")
   .action(async (slug?: string) => {
-    const store = getStore();
+    const store = await getStore();
     const result = await linksCommand(store, slug);
     if (result.output) process.stdout.write(result.output + "\n");
     process.exit(result.exitCode);
@@ -85,7 +87,7 @@ program
   .command("archive <slug>")
   .description("Move a card to archive")
   .action(async (slug: string) => {
-    const store = getStore();
+    const store = await getStore();
     const result = await archiveCommand(store, slug);
     if (!result.success) {
       process.stderr.write(result.error! + "\n");
@@ -145,7 +147,7 @@ program
     const { createMemexServer } = await import("./mcp/server.js");
     const { StdioServerTransport } = await import("@modelcontextprotocol/sdk/server/stdio.js");
     const home = process.env.MEMEX_HOME || join(homedir(), ".memex");
-    const store = getStore();
+    const store = await getStore();
     const server = createMemexServer(store, home);
     const transport = new StdioServerTransport();
     console.error("memex MCP server running on stdio");
@@ -158,7 +160,7 @@ program
   .option("--dry-run", "Preview without writing")
   .option("--dir <path>", "Override source directory")
   .action(async (source: string | undefined, opts: { dryRun?: boolean; dir?: string }) => {
-    const store = getStore();
+    const store = await getStore();
     const result = await importCommand(store, source, opts);
     if (result.output) process.stdout.write(result.output + "\n");
     if (!result.success) {

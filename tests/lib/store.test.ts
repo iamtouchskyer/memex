@@ -222,3 +222,98 @@ describe("validateSlug (unit)", () => {
     expect(() => validateSlug("a/../b")).toThrow("path segments must not be");
   });
 });
+
+describe("CardStore with nestedSlugs", () => {
+  let tmpDir: string;
+  let cardsDir: string;
+  let archiveDir: string;
+  let store: CardStore;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "memex-nested-test-"));
+    cardsDir = join(tmpDir, "cards");
+    archiveDir = join(tmpDir, "archive");
+    await mkdir(cardsDir, { recursive: true });
+    await mkdir(archiveDir, { recursive: true });
+    store = new CardStore(cardsDir, archiveDir, true);
+  });
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  describe("scanAll with nestedSlugs", () => {
+    it("returns nested slugs with path preserved", async () => {
+      await writeFile(join(cardsDir, "a.md"), "---\ntitle: A\n---\n");
+      await mkdir(join(cardsDir, "sub"), { recursive: true });
+      await writeFile(join(cardsDir, "sub", "b.md"), "---\ntitle: B\n---\n");
+      await mkdir(join(cardsDir, "sub", "deep"), { recursive: true });
+      await writeFile(join(cardsDir, "sub", "deep", "c.md"), "---\ntitle: C\n---\n");
+
+      const files = await store.scanAll();
+      const slugs = files.map((f) => f.slug).sort();
+      expect(slugs).toEqual(["a", "sub/b", "sub/deep/c"]);
+    });
+  });
+
+  describe("resolve with nestedSlugs", () => {
+    it("finds card by nested slug", async () => {
+      await mkdir(join(cardsDir, "sub"), { recursive: true });
+      await writeFile(join(cardsDir, "sub", "nested.md"), "content");
+      const path = await store.resolve("sub/nested");
+      expect(path).toBe(join(cardsDir, "sub", "nested.md"));
+    });
+
+    it("finds card by flat slug", async () => {
+      await writeFile(join(cardsDir, "flat.md"), "content");
+      const path = await store.resolve("flat");
+      expect(path).toBe(join(cardsDir, "flat.md"));
+    });
+
+    it("returns null when nested slug not found", async () => {
+      const path = await store.resolve("sub/nonexistent");
+      expect(path).toBeNull();
+    });
+  });
+
+  describe("readCard with nestedSlugs", () => {
+    it("reads card by nested slug", async () => {
+      const content = "---\ntitle: Test\n---\nBody";
+      await mkdir(join(cardsDir, "sub"), { recursive: true });
+      await writeFile(join(cardsDir, "sub", "test.md"), content);
+      const result = await store.readCard("sub/test");
+      expect(result).toBe(content);
+    });
+  });
+
+  describe("writeCard with nestedSlugs", () => {
+    it("writes card with nested slug", async () => {
+      const content = "---\ntitle: New\n---\nBody";
+      await store.writeCard("sub/new-card", content);
+      const written = await readFile(join(cardsDir, "sub", "new-card.md"), "utf-8");
+      expect(written).toBe(content);
+    });
+
+    it("overwrites existing nested card", async () => {
+      await mkdir(join(cardsDir, "sub"), { recursive: true });
+      await writeFile(join(cardsDir, "sub", "existing.md"), "old");
+      await store.writeCard("sub/existing", "new");
+      const written = await readFile(join(cardsDir, "sub", "existing.md"), "utf-8");
+      expect(written).toBe("new");
+    });
+  });
+
+  describe("archiveCard with nestedSlugs", () => {
+    it("moves nested card to archive", async () => {
+      await mkdir(join(cardsDir, "sub"), { recursive: true });
+      await writeFile(join(cardsDir, "sub", "old.md"), "content");
+      await store.archiveCard("sub/old");
+
+      const archivedPath = join(archiveDir, "sub/old.md");
+      const content = await readFile(archivedPath, "utf-8");
+      expect(content).toBe("content");
+
+      await expect(store.resolve("sub/old")).resolves.toBeNull();
+    });
+  });
+});
