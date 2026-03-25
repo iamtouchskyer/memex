@@ -3,9 +3,10 @@ import { join } from "path";
 import { existsSync, readFileSync, readdirSync } from "fs";
 import { execSync } from "child_process";
 
-/** Sort version strings like "v18.0.0", "v20.1.0" by semver (highest last) */
+/** Sort version strings like "v18.0.0", "v20.1.0" by semver (highest last).
+ *  Canonical version with tests in src/lib/utils.ts */
 function semverSort(versions: string[]): string[] {
-  return versions.sort((a, b) => {
+  return [...versions].sort((a, b) => {
     const pa = a.replace(/^v/, "").split(".").map(Number);
     const pb = b.replace(/^v/, "").split(".").map(Number);
     for (let i = 0; i < 3; i++) {
