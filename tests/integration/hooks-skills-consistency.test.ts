@@ -6,6 +6,15 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "../..");
 
+describe("version consistency", () => {
+  const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf-8"));
+  const plugin = JSON.parse(readFileSync(join(ROOT, ".claude-plugin/plugin.json"), "utf-8"));
+
+  it("package.json and plugin.json versions must match", () => {
+    expect(plugin.version).toBe(pkg.version);
+  });
+});
+
 describe("hooks ↔ skills consistency", () => {
   const hooksRaw = readFileSync(join(ROOT, "hooks/hooks.json"), "utf-8");
   const hooks = JSON.parse(hooksRaw);
