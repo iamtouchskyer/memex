@@ -1,6 +1,6 @@
 ---
 name: memex-recall
-description: Retrieve relevant memories from the Zettelkasten before starting a task. Use at the beginning of any task that might benefit from prior knowledge.
+description: MUST invoke BEFORE responding to the user's first task message. Your memory is NOT loaded until you run this — the index in system-reminder was removed, you must actively retrieve it.
 ---
 
 # Memory Recall

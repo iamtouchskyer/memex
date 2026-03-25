@@ -1,0 +1,54 @@
+import { describe, it, expect } from "vitest";
+import { readFileSync, existsSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const ROOT = join(__dirname, "../..");
+
+describe("hooks ↔ skills consistency", () => {
+  const hooksRaw = readFileSync(join(ROOT, "hooks/hooks.json"), "utf-8");
+  const hooks = JSON.parse(hooksRaw);
+
+  it("hooks.json is valid JSON", () => {
+    expect(hooks).toBeDefined();
+    expect(hooks.hooks.SessionStart).toBeInstanceOf(Array);
+  });
+
+  it("every skill referenced in hooks.json has a matching SKILL.md", () => {
+    const command: string = hooks.hooks.SessionStart[0].hooks[0].command;
+    // Extract skill names like `memex-recall`, `memex-retro` from backtick-quoted references
+    const skillRefs = [...command.matchAll(/`(memex-\w+)`\s+skill/g)].map(m => m[1]);
+
+    expect(skillRefs.length).toBeGreaterThan(0);
+
+    for (const skill of skillRefs) {
+      const skillPath = join(ROOT, "skills", skill, "SKILL.md");
+      expect(existsSync(skillPath), `skill "${skill}" referenced in hooks.json but ${skillPath} does not exist`).toBe(true);
+    }
+  });
+
+  it("hooks.json does NOT execute memex read index to inline content", () => {
+    const command: string = hooks.hooks.SessionStart[0].hooks[0].command;
+    // The command should not end with or contain a bare execution of "memex read index"
+    // that would dump index content into system-reminder. Mentioning it in a fallback
+    // instruction string (inside echo quotes) is fine.
+    expect(command).not.toContain("### Index");
+    // Should not have memex read index as a shell command (outside of echo strings)
+    // The old pattern was: echo '...' && memex read index 2>/dev/null
+    expect(command).not.toMatch(/&&\s*memex read index/);
+    expect(command).not.toMatch(/;\s*memex read index/);
+  });
+
+  it("hooks.json references recall as MANDATORY", () => {
+    const command: string = hooks.hooks.SessionStart[0].hooks[0].command;
+    expect(command.toLowerCase()).toContain("mandatory");
+    expect(command).toContain("memex-recall");
+  });
+
+  it("hooks.json references retro as MANDATORY", () => {
+    const command: string = hooks.hooks.SessionStart[0].hooks[0].command;
+    expect(command.toLowerCase()).toContain("mandatory");
+    expect(command).toContain("memex-retro");
+  });
+});
