@@ -5,6 +5,7 @@ import { searchCommand } from "../commands/search.js";
 import { readCommand } from "../commands/read.js";
 import { writeCommand } from "../commands/write.js";
 import { linksCommand } from "../commands/links.js";
+import { organizeCommand } from "../commands/organize.js";
 import { stringifyFrontmatter } from "../lib/parser.js";
 import { GitAdapter, readSyncConfig } from "../lib/sync.js";
 import { z } from "zod";
@@ -79,12 +80,14 @@ export function registerOperations(
 
   // ---- organize ----
   server.registerTool("memex_organize", {
-    description: "Analyze the card network for maintenance. Returns link stats, orphans (unlinked cards), and hubs (heavily linked cards). Call this periodically (e.g. every few sessions) to identify cards that need linking or cleanup.",
-    inputSchema: z.object({}),
-  }, async () => {
+    description: "Analyze the card network for maintenance. Returns link stats, orphans, hubs, unresolved conflicts, and recently modified cards paired with their neighbors for contradiction detection. Call this periodically to keep the knowledge graph healthy.",
+    inputSchema: z.object({
+      since: z.string().optional().describe("Only check cards modified since this date (YYYY-MM-DD). Omit for full scan."),
+    }),
+  }, async ({ since }) => {
     await hooks.run("pre", "organize");
 
-    const result = await linksCommand(store, undefined);
+    const result = await organizeCommand(store, since ?? null);
 
     await hooks.run("post", "organize");
 
