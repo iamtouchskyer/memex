@@ -17,6 +17,8 @@ import { archiveCommand } from "./commands/archive.js";
 import { serveCommand } from "./commands/serve.js";
 import { syncCommand } from "./commands/sync.js";
 import { importCommand } from "./commands/import.js";
+import { doctorCommand } from "./commands/doctor.js";
+import { migrateCommand } from "./commands/migrate.js";
 
 async function getStore(opts?: { nested?: boolean }): Promise<CardStore> {
   const home = process.env.MEMEX_HOME || join(homedir(), ".memex");
@@ -168,6 +170,47 @@ program
     if (result.output) process.stdout.write(result.output + "\n");
     if (!result.success) {
       if (result.error) process.stderr.write(result.error + "\n");
+      process.exit(1);
+    }
+  });
+
+program
+  .command("doctor")
+  .description("Check memex health and configuration")
+  .option("--check-collisions", "Check for slug collisions in basename mode")
+  .action(async (opts: { checkCollisions?: boolean }) => {
+    const home = process.env.MEMEX_HOME || join(homedir(), ".memex");
+    const cardsDir = join(home, "cards");
+    const archiveDir = join(home, "archive");
+
+    if (opts.checkCollisions) {
+      const result = await doctorCommand(cardsDir, archiveDir);
+      if (result.output) process.stdout.write(result.output + "\n");
+      process.exit(result.exitCode);
+    } else {
+      process.stderr.write("No check specified. Use --check-collisions to check for slug collisions.\n");
+      process.exit(1);
+    }
+  });
+
+program
+  .command("migrate")
+  .description("Migrate memex configuration")
+  .option("--enable-nested", "Enable nestedSlugs in config")
+  .action(async (opts: { enableNested?: boolean }) => {
+    const home = process.env.MEMEX_HOME || join(homedir(), ".memex");
+    const cardsDir = join(home, "cards");
+    const archiveDir = join(home, "archive");
+
+    if (opts.enableNested) {
+      const result = await migrateCommand(home, cardsDir, archiveDir);
+      if (result.output) process.stdout.write(result.output + "\n");
+      if (!result.success) {
+        if (result.error) process.stderr.write(result.error + "\n");
+        process.exit(1);
+      }
+    } else {
+      process.stderr.write("No migration specified. Use --enable-nested to enable nestedSlugs.\n");
       process.exit(1);
     }
   });
