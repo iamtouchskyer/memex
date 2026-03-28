@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { searchCommand } from "../../src/commands/search.js";
 import { CardStore } from "../../src/lib/store.js";
+import { MemexConfig } from "../../src/lib/config.js";
 
 describe("searchCommand", () => {
   let tmpDir: string;
@@ -105,5 +106,112 @@ When JWT revoke fails, use cache as fallback. See [[jwt-migration]].`
   it("is case-insensitive", async () => {
     const result = await searchCommand(store, "jwt");
     expect(result.output).toContain("## jwt-migration");
+  });
+});
+
+describe("searchCommand with --all flag (multi-directory)", () => {
+  let tmpDir: string;
+  let memexHome: string;
+  let store: CardStore;
+  let config: MemexConfig;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "memex-test-multi-"));
+    memexHome = tmpDir;
+    const cardsDir = join(tmpDir, "cards");
+    const projectsDir = join(tmpDir, "projects");
+    await mkdir(cardsDir, { recursive: true });
+    await mkdir(projectsDir, { recursive: true });
+    store = new CardStore(cardsDir, join(tmpDir, "archive"));
+
+    // Card in cards/
+    await writeFile(
+      join(cardsDir, "auth.md"),
+      `---
+title: Authentication
+created: 2026-03-18
+---
+
+Basic authentication concepts.`
+    );
+
+    // Card in projects/
+    await writeFile(
+      join(projectsDir, "api-design.md"),
+      `---
+title: API Design
+created: 2026-03-18
+---
+
+REST API design patterns.`
+    );
+
+    // Another card in projects/
+    await writeFile(
+      join(projectsDir, "deployment.md"),
+      `---
+title: Deployment Guide
+created: 2026-03-18
+---
+
+How to deploy the authentication service.`
+    );
+
+    config = {
+      nestedSlugs: false,
+      searchDirs: ["projects"],
+    };
+  });
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("searches only cards/ when --all is not set", async () => {
+    const result = await searchCommand(store, "API");
+    expect(result.output).not.toContain("api-design");
+    expect(result.output).toBe("");
+  });
+
+  it("searches cards/ and projects/ when --all is set", async () => {
+    const result = await searchCommand(store, "API", { all: true, config, memexHome });
+    expect(result.output).toContain("projects/api-design");
+    expect(result.output).toContain("API Design");
+  });
+
+  it("prefixes slugs with directory name when using --all", async () => {
+    const result = await searchCommand(store, "authentication", { all: true, config, memexHome });
+    expect(result.output).toContain("cards/auth");
+    expect(result.output).toContain("projects/deployment");
+  });
+
+  it("lists all cards from all directories when --all is set without query", async () => {
+    const result = await searchCommand(store, undefined, { all: true, config, memexHome });
+    expect(result.output).toContain("cards/auth");
+    expect(result.output).toContain("projects/api-design");
+    expect(result.output).toContain("projects/deployment");
+  });
+
+  it("works with empty searchDirs config", async () => {
+    const emptyConfig: MemexConfig = {
+      nestedSlugs: false,
+      searchDirs: [],
+    };
+    const result = await searchCommand(store, "authentication", { all: true, config: emptyConfig, memexHome });
+    // Empty searchDirs means only cards/ is searched, no prefix
+    expect(result.output).toContain("## auth");
+    expect(result.output).not.toContain("projects/");
+    expect(result.output).not.toContain("cards/");
+  });
+
+  it("works with undefined searchDirs", async () => {
+    const noSearchDirsConfig: MemexConfig = {
+      nestedSlugs: false,
+    };
+    const result = await searchCommand(store, "authentication", { all: true, config: noSearchDirsConfig, memexHome });
+    // Undefined searchDirs means only cards/ is searched, no prefix
+    expect(result.output).toContain("## auth");
+    expect(result.output).not.toContain("projects/");
+    expect(result.output).not.toContain("cards/");
   });
 });

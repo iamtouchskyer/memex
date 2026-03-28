@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 export interface MemexConfig {
   nestedSlugs: boolean;
+  searchDirs?: string[];
 }
 
 /**
@@ -18,6 +19,7 @@ export async function readConfig(memexHome: string): Promise<MemexConfig> {
 
     return {
       nestedSlugs: parsed.nestedSlugs === true,
+      searchDirs: Array.isArray(parsed.searchDirs) ? parsed.searchDirs : undefined,
     };
   } catch {
     // File doesn't exist or invalid JSON - return defaults

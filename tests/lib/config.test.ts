@@ -49,4 +49,22 @@ describe("readConfig", () => {
     const config = await readConfig(tmpDir);
     expect(config).toEqual({ nestedSlugs: false });
   });
+
+  it("reads searchDirs from config file", async () => {
+    await writeFile(join(tmpDir, ".memexrc"), JSON.stringify({ nestedSlugs: true, searchDirs: ["projects", "notes"] }));
+    const config = await readConfig(tmpDir);
+    expect(config).toEqual({ nestedSlugs: true, searchDirs: ["projects", "notes"] });
+  });
+
+  it("treats non-array searchDirs as undefined", async () => {
+    await writeFile(join(tmpDir, ".memexrc"), JSON.stringify({ nestedSlugs: false, searchDirs: "projects" }));
+    const config = await readConfig(tmpDir);
+    expect(config).toEqual({ nestedSlugs: false, searchDirs: undefined });
+  });
+
+  it("treats missing searchDirs field as undefined", async () => {
+    await writeFile(join(tmpDir, ".memexrc"), JSON.stringify({ nestedSlugs: false }));
+    const config = await readConfig(tmpDir);
+    expect(config).toEqual({ nestedSlugs: false });
+  });
 });

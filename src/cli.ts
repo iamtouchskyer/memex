@@ -43,9 +43,12 @@ program
   .description("Full-text search cards (body only), or list all if no query")
   .option("-l, --limit <n>", "Max results to return", "10")
   .option("--nested", "Use nested (path-preserving) slugs for this command")
-  .action(async (query: string | undefined, opts: { limit: string; nested?: boolean }) => {
+  .option("--all", "Search across all configured searchDirs in addition to cards/")
+  .action(async (query: string | undefined, opts: { limit: string; nested?: boolean; all?: boolean }) => {
+    const home = process.env.MEMEX_HOME || join(homedir(), ".memex");
+    const config = await readConfig(home);
     const store = await getStore({ nested: opts.nested });
-    const result = await searchCommand(store, query, { limit: parseInt(opts.limit) });
+    const result = await searchCommand(store, query, { limit: parseInt(opts.limit), all: opts.all, config, memexHome: home });
     if (result.output) process.stdout.write(result.output + "\n");
     process.exit(result.exitCode);
   });
