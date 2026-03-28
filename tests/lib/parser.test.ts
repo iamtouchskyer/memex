@@ -23,6 +23,21 @@ Body content here.`;
     expect(result.data).toEqual({});
     expect(result.content).toBe("Just plain text.");
   });
+
+  it("gracefully handles unparseable YAML frontmatter (fixes #27)", () => {
+    // The `#1)` triggers a YAML parse error: js-yaml treats # as comment start
+    const content = `---
+title: Agent Memory Taxonomy
+source: "Memory in the Age of AI Agents" (arxiv 2512.13564, HF Daily Paper #1)
+---
+
+Body content here.`;
+
+    const result = parseFrontmatter(content);
+    // Should not throw — returns fallback with empty data
+    expect(result.data).toEqual({});
+    expect(result.content).toContain("Body content here.");
+  });
 });
 
 describe("extractLinks", () => {

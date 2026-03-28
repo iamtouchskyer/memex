@@ -6,8 +6,15 @@ export interface ParsedCard {
 }
 
 export function parseFrontmatter(raw: string): ParsedCard {
-  const { data, content } = matter(raw);
-  return { data, content };
+  try {
+    const { data, content } = matter(raw);
+    return { data, content };
+  } catch {
+    // Frontmatter parse failed (e.g. YAML special chars like # in values).
+    // Fall back: treat entire file as content with empty metadata.
+    const stripped = raw.replace(/^---[\s\S]*?---\n?/, "");
+    return { data: {}, content: stripped || raw };
+  }
 }
 
 export function stringifyFrontmatter(
