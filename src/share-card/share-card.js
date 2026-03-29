@@ -255,6 +255,8 @@ export function createShareCard(container, options = {}) {
       ${onCancel ? '<button class="memex-sc-btn secondary" data-action="cancel">Cancel</button>' : ''}
       <button class="memex-sc-btn primary" data-action="export">Download</button>
     </div>`;
+    // innerHTML is required here to render the card DOM structure from HTML strings.
+    // User-supplied text (title, source, links) is escaped via escapeHtml() before interpolation.
     container.innerHTML = `<div class="memex-sc-root">${cardHtml}${pickerHtml}${actionsHtml}</div>`;
     bindEvents();
   }
@@ -267,6 +269,8 @@ export function createShareCard(container, options = {}) {
         wrap.querySelector('.memex-sc-thumb').classList.add('active');
         const cardEl = container.querySelector('.memex-sc-card');
         const tempDiv = document.createElement('div');
+        // innerHTML is required here to parse the card HTML into a DOM element for replaceWith().
+        // All user-supplied text is escaped via escapeHtml() in renderCard().
         tempDiv.innerHTML = renderCard();
         cardEl.replaceWith(tempDiv.firstElementChild);
       });
@@ -312,7 +316,7 @@ export function createShareCard(container, options = {}) {
     },
     export: exportPng,
     destroy() {
-      container.innerHTML = '';
+      container.textContent = '';
     },
   };
 }

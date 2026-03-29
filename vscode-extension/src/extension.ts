@@ -24,7 +24,9 @@ function findNode(): string {
     const whichCmd = isWin ? "where node" : "which node";
     const nodePath = execSync(whichCmd, { encoding: "utf-8" }).trim().split(/\r?\n/)[0];
     if (nodePath && existsSync(nodePath)) return nodePath;
-  } catch {}
+  } catch (error) {
+    console.error('findNode: failed to locate node via system path:', error);
+  }
 
   // 2. Common Node.js install locations (platform-specific)
   if (isWin) {
@@ -45,7 +47,9 @@ function findNode(): string {
           const nvmNode = join(nvmHome, latest, "node.exe");
           if (existsSync(nvmNode)) return nvmNode;
         }
-      } catch {}
+      } catch (error) {
+        console.error('findNode: failed to read Windows nvm versions:', error);
+      }
     }
   } else {
     const unixPaths = [
@@ -66,7 +70,9 @@ function findNode(): string {
           const nvmNode = join(nvmDir, latest, "bin/node");
           if (existsSync(nvmNode)) return nvmNode;
         }
-      } catch {}
+      } catch (error) {
+        console.error('findNode: failed to read Unix nvm versions:', error);
+      }
     }
   }
 
