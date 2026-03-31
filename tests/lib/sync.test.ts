@@ -245,5 +245,5 @@ describe("GitAdapter", () => {
     expect(config.remote).toBe(bare);
 
     await rm(bare, { recursive: true });
-  });
+  }, process.platform === 'win32' ? 15000 : 5000);
 });

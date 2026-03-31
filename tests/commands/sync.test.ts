@@ -55,7 +55,7 @@ describe("syncCommand", () => {
     await syncCommand(home, { auto: "off" });
     status = await syncCommand(home, { status: true });
     expect(status.output).toContain("auto: off");
-  });
+  }, process.platform === 'win32' ? 15000 : 5000);
 
   it("sync without init fails gracefully", async () => {
     const result = await syncCommand(home, {});
