@@ -18,41 +18,82 @@ export interface EmbeddingProvider {
 
 export type EmbeddingProviderType = "openai" | "local" | "ollama";
 
+/** Default embedding model when none is configured. */
+export const DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small";
+
+/** Maximum number of retry attempts for transient API errors. */
+const MAX_RETRIES = 3;
+
+/** Base delay in ms for exponential backoff. */
+const BASE_DELAY_MS = 1000;
+
 /**
- * OpenAI embedding provider using text-embedding-3-small (1536 dims).
+ * Sleep for the specified number of milliseconds.
+ * Extracted as a function so tests can verify retry behavior.
+ */
+export function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Determine whether an HTTP status code is retryable.
+ */
+function isRetryableStatus(status: number): boolean {
+  return status === 429 || (status >= 500 && status <= 599);
+}
+
+/**
+ * OpenAI embedding provider.
+ * Model is configurable (defaults to text-embedding-3-small).
  * Uses native Node `https` module — no external dependencies.
+ * Retries on 429 (rate limit) and 5xx errors with exponential backoff.
  */
 export class OpenAIEmbeddingProvider implements EmbeddingProvider {
-  readonly model = "text-embedding-3-small";
+  readonly model: string;
   private apiKey: string;
 
-  constructor(apiKey?: string) {
-    const key = apiKey ?? process.env.OPENAI_API_KEY;
-    if (!key) {
-      throw new Error(
-        "OpenAI API key required: pass to constructor or set OPENAI_API_KEY"
-      );
+  constructor(apiKey?: string, model?: string) {
+    this.apiKey = apiKey ?? process.env.OPENAI_API_KEY ?? "";
+    this.model = model ?? DEFAULT_EMBEDDING_MODEL;
+
+    if (!this.apiKey) {
+      throw new Error("OpenAI API key is required. Set openaiApiKey in .memexrc or OPENAI_API_KEY env var.");
     }
-    this.apiKey = key;
   }
 
   async embed(texts: string[]): Promise<number[][]> {
     if (texts.length === 0) return [];
 
-    const results: number[][] = [];
-    // OpenAI allows up to 2048 inputs per request
-    const batchSize = 2048;
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        return await this.makeRequest(texts);
+      } catch (err) {
+        const isLastAttempt = attempt === MAX_RETRIES;
+        if (isLastAttempt) throw err;
 
-    for (let i = 0; i < texts.length; i += batchSize) {
-      const batch = texts.slice(i, i + batchSize);
-      const vectors = await this.requestEmbeddings(batch);
-      results.push(...vectors);
+        // Check if error is retryable
+        if (err instanceof Error && err.message.includes("status:")) {
+          const statusMatch = err.message.match(/status:\s*(\d+)/);
+          const status = statusMatch ? parseInt(statusMatch[1], 10) : 0;
+          
+          if (!isRetryableStatus(status)) {
+            throw err; // Don't retry non-retryable errors
+          }
+        } else {
+          throw err; // Don't retry non-HTTP errors
+        }
+
+        // Calculate backoff delay: BASE_DELAY_MS * 2^(attempt-1)
+        const delayMs = BASE_DELAY_MS * Math.pow(2, attempt - 1);
+        await sleep(delayMs);
+      }
     }
 
-    return results;
+    // This line should never be reached due to the throw in the last attempt
+    throw new Error("Unexpected end of retry loop");
   }
 
-  private requestEmbeddings(texts: string[]): Promise<number[][]> {
+  private async makeRequest(texts: string[]): Promise<number[][]> {
     return new Promise((resolve, reject) => {
       const body = JSON.stringify({
         model: this.model,
@@ -66,8 +107,8 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${this.apiKey}`,
             "Content-Length": Buffer.byteLength(body),
+            Authorization: `Bearer ${this.apiKey}`,
           },
         },
         (res) => {
@@ -78,17 +119,20 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
           res.on("end", () => {
             try {
               const parsed = JSON.parse(data);
-              if (parsed.error) {
-                reject(
-                  new Error(`OpenAI API error: ${parsed.error.message}`)
-                );
+              
+              if (res.statusCode !== 200) {
+                const errorMsg = parsed.error?.message || `HTTP ${res.statusCode}`;
+                reject(new Error(`OpenAI API error (status: ${res.statusCode}): ${errorMsg}`));
                 return;
               }
-              // Sort by index to guarantee order matches input
-              const sorted = (
-                parsed.data as Array<{ index: number; embedding: number[] }>
-              ).sort((a, b) => a.index - b.index);
-              resolve(sorted.map((d) => d.embedding));
+
+              if (!parsed.data || !Array.isArray(parsed.data)) {
+                reject(new Error("Invalid OpenAI API response: missing data array"));
+                return;
+              }
+
+              const vectors = parsed.data.map((item: any) => item.embedding);
+              resolve(vectors);
             } catch (e) {
               reject(new Error(`Failed to parse OpenAI response: ${e}`));
             }
@@ -96,7 +140,9 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
         }
       );
 
-      req.on("error", reject);
+      req.on("error", (err) => {
+        reject(new Error(`OpenAI API request failed: ${err.message}`));
+      });
       req.write(body);
       req.end();
     });
@@ -464,8 +510,7 @@ export async function createEmbeddingProvider(
 
 interface CacheEntry {
   vector: number[];
-  contentHash: string;
-  updatedAt: string;
+  hash: string;
 }
 
 interface CacheData {
@@ -475,12 +520,12 @@ interface CacheData {
 }
 
 /**
- * File-backed embedding cache.
- * Stores vectors keyed by card slug with content-hash invalidation.
+ * File-based cache for embedding vectors.
+ * Cache key = content hash; invalidates automatically when content changes.
  */
 export class EmbeddingCache {
-  private data: CacheData;
   private filePath: string;
+  private data: CacheData;
 
   constructor(
     private memexHome: string,
@@ -509,109 +554,77 @@ export class EmbeddingCache {
 
   async save(): Promise<void> {
     await mkdir(dirname(this.filePath), { recursive: true });
-    await writeFile(this.filePath, JSON.stringify(this.data, null, 2), "utf-8");
+    await writeFile(this.filePath, JSON.stringify(this.data, null, 2));
   }
 
-  get(slug: string): CacheEntry | undefined {
-    return this.data.entries[slug];
+  get(slug: string): CacheEntry | null {
+    return this.data.entries[slug] || null;
   }
 
   set(slug: string, vector: number[], contentHash: string): void {
-    this.data.entries[slug] = {
-      vector,
-      contentHash,
-      updatedAt: new Date().toISOString(),
-    };
+    this.data.entries[slug] = { vector, hash: contentHash };
   }
 
-  remove(slug: string): void {
-    delete this.data.entries[slug];
-  }
-
-  needsUpdate(slug: string, currentHash: string): boolean {
+  isValid(slug: string, contentHash: string): boolean {
     const entry = this.data.entries[slug];
-    return !entry || entry.contentHash !== currentHash;
-  }
-
-  /** Returns all cached slugs (for stale-entry detection). */
-  slugs(): string[] {
-    return Object.keys(this.data.entries);
+    return entry ? entry.hash === contentHash : false;
   }
 }
 
-// --- Utilities ---
-
-/** Compute SHA-256 hex digest of a string. */
-export function contentHash(text: string): string {
-  return createHash("sha256").update(text).digest("hex");
-}
-
-/** Cosine similarity between two vectors of equal length. */
-export function cosineSimilarity(a: number[], b: number[]): number {
-  let dot = 0;
-  let normA = 0;
-  let normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-  const denom = Math.sqrt(normA) * Math.sqrt(normB);
-  if (denom === 0) return 0;
-  return dot / denom;
-}
-
-// --- Orchestrator ---
-
-export interface EmbedCardsResult {
-  embedded: number;
-  removed: number;
-  total: number;
-}
+// --- Embedding generation ---
 
 /**
- * Scan all cards, embed new/changed ones, remove stale cache entries.
+ * Generate embeddings for all cards in a store and cache them.
+ * Only re-embeds cards whose content has changed (based on hash).
  */
 export async function embedCards(
   store: CardStore,
   provider: EmbeddingProvider,
   cache: EmbeddingCache
-): Promise<EmbedCardsResult> {
+): Promise<void> {
   const cards = await store.scanAll();
-  const currentSlugs = new Set<string>();
-  const toEmbed: Array<{ slug: string; hash: string; text: string }> = [];
+  const toEmbed: string[] = [];
+  const slugs: string[] = [];
 
-  // Identify new/changed cards
   for (const card of cards) {
-    currentSlugs.add(card.slug);
-    const raw = await store.readCard(card.slug);
-    const hash = contentHash(raw);
+    const content = await store.readCard(card.slug);
+    const hash = createHash("sha256").update(content).digest("hex");
 
-    if (cache.needsUpdate(card.slug, hash)) {
-      toEmbed.push({ slug: card.slug, hash, text: raw });
+    if (!cache.isValid(card.slug, hash)) {
+      toEmbed.push(content);
+      slugs.push(card.slug);
     }
   }
 
-  // Batch-embed changed cards
-  if (toEmbed.length > 0) {
-    const vectors = await provider.embed(toEmbed.map((c) => c.text));
-    for (let i = 0; i < toEmbed.length; i++) {
-      cache.set(toEmbed[i].slug, vectors[i], toEmbed[i].hash);
-    }
+  if (toEmbed.length === 0) return;
+
+  const vectors = await provider.embed(toEmbed);
+  for (let i = 0; i < vectors.length; i++) {
+    const content = toEmbed[i];
+    const hash = createHash("sha256").update(content).digest("hex");
+    cache.set(slugs[i], vectors[i], hash);
+  }
+}
+
+// --- Similarity ---
+
+/**
+ * Compute cosine similarity between two vectors.
+ * Returns a value between -1 (opposite) and 1 (identical).
+ */
+export function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length !== b.length) return 0;
+
+  let dotProduct = 0;
+  let magnitudeA = 0;
+  let magnitudeB = 0;
+
+  for (let i = 0; i < a.length; i++) {
+    dotProduct += a[i] * b[i];
+    magnitudeA += a[i] * a[i];
+    magnitudeB += b[i] * b[i];
   }
 
-  // Remove stale entries (cards that no longer exist)
-  let removed = 0;
-  for (const slug of cache.slugs()) {
-    if (!currentSlugs.has(slug)) {
-      cache.remove(slug);
-      removed++;
-    }
-  }
-
-  return {
-    embedded: toEmbed.length,
-    removed,
-    total: cards.length,
-  };
+  const magnitude = Math.sqrt(magnitudeA * magnitudeB);
+  return magnitude === 0 ? 0 : dotProduct / magnitude;
 }

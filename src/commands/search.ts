@@ -13,6 +13,9 @@ import { join } from "node:path";
 
 const DEFAULT_LIMIT = 10;
 
+/** Default weight for semantic score in hybrid ranking. */
+const DEFAULT_SEMANTIC_WEIGHT = 0.7;
+
 interface SearchOptions {
   limit?: number;
   all?: boolean;
@@ -185,6 +188,10 @@ async function semanticSearch(
     }
   }
 
+  // Resolve semantic weight from config (default 0.7)
+  const semanticWeight = options.config?.semanticWeight ?? DEFAULT_SEMANTIC_WEIGHT;
+  const keywordWeight = 1 - semanticWeight;
+
   // Build / refresh embedding cache
   const memexHome = options.memexHome ?? "";
   const cache = new EmbeddingCache(memexHome, provider.model);
@@ -215,9 +222,9 @@ async function semanticSearch(
     const kwRaw = keywordScores.get(card.slug) ?? 0;
     const kwNormalized = maxKw > 0 ? kwRaw / maxKw : 0;
 
-    // Hybrid scoring: 0.7 * semantic + 0.3 * keywordNormalized
+    // Hybrid scoring: semanticWeight * semantic + keywordWeight * keywordNormalized
     const finalScore = kwRaw > 0
-      ? 0.7 * semScore + 0.3 * kwNormalized
+      ? semanticWeight * semScore + keywordWeight * kwNormalized
       : semScore;
 
     scored.push({ slug: card.slug, store: card.store, dirPrefix: card.dirPrefix, score: finalScore });

@@ -7,6 +7,7 @@ export interface MemexConfig {
   searchDirs?: string[];
   openaiApiKey?: string;
   embeddingModel?: string;
+  semanticWeight?: number;
   /** Embedding provider: "openai" | "local" | "ollama". Auto-detected if omitted. */
   embeddingProvider?: EmbeddingProviderType;
   /** Ollama model name (default: "nomic-embed-text"). */
@@ -33,6 +34,9 @@ export async function readConfig(memexHome: string): Promise<MemexConfig> {
       searchDirs: Array.isArray(parsed.searchDirs) ? parsed.searchDirs : undefined,
       openaiApiKey: typeof parsed.openaiApiKey === "string" ? parsed.openaiApiKey : undefined,
       embeddingModel: typeof parsed.embeddingModel === "string" ? parsed.embeddingModel : undefined,
+      semanticWeight: typeof parsed.semanticWeight === "number" && parsed.semanticWeight >= 0 && parsed.semanticWeight <= 1
+        ? parsed.semanticWeight
+        : undefined,
       embeddingProvider: isValidProvider(parsed.embeddingProvider) ? parsed.embeddingProvider : undefined,
       ollamaModel: typeof parsed.ollamaModel === "string" ? parsed.ollamaModel : undefined,
       ollamaBaseUrl: typeof parsed.ollamaBaseUrl === "string" ? parsed.ollamaBaseUrl : undefined,
