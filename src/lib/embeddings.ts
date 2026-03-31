@@ -132,18 +132,96 @@ export async function isNodeLlamaCppAvailable(): Promise<boolean> {
 }
 
 /**
+/**
+ * Estimate the maximum safe character length for a given token context size.
+ *
+ * Uses a conservative ratio of ~1.5 characters per token to safely handle
+ * CJK text (Chinese/Japanese/Korean), where tokenization is much denser
+ * (~2 chars/token) compared to English (~4 chars/token).
+ * Leaves a 10% margin to account for tokenizer variability.
+ */
+function estimateMaxChars(contextTokens: number): number {
+  const CHARS_PER_TOKEN = 1.5; // conservative: safe for CJK (~2) and English (~4)
+  const SAFETY_MARGIN = 0.9;
+  return Math.floor(contextTokens * CHARS_PER_TOKEN * SAFETY_MARGIN);
+}
+
+/**
+ * Split text into chunks that fit within a character limit.
+ * Splits on paragraph boundaries (double newlines) when possible,
+ * falling back to hard truncation for very long paragraphs.
+ */
+export function chunkText(text: string, maxChars: number): string[] {
+  if (text.length <= maxChars) return [text];
+
+  const chunks: string[] = [];
+  const paragraphs = text.split(/\n\n+/);
+  let current = "";
+
+  for (const para of paragraphs) {
+    if (para.length > maxChars) {
+      // Paragraph itself is too long — flush current, then hard-chunk the paragraph
+      if (current.length > 0) {
+        chunks.push(current.trim());
+        current = "";
+      }
+      for (let i = 0; i < para.length; i += maxChars) {
+        chunks.push(para.slice(i, i + maxChars).trim());
+      }
+    } else if (current.length + para.length + 2 > maxChars) {
+      // Adding this paragraph would exceed the limit — flush current
+      if (current.length > 0) {
+        chunks.push(current.trim());
+      }
+      current = para;
+    } else {
+      current = current.length > 0 ? current + "\n\n" + para : para;
+    }
+  }
+
+  if (current.length > 0) {
+    chunks.push(current.trim());
+  }
+
+  return chunks.filter((c) => c.length > 0);
+}
+
+/**
+ * Average multiple vectors element-wise and normalize the result.
+ */
+function averageVectors(vectors: number[][]): number[] {
+  if (vectors.length === 0) return [];
+  if (vectors.length === 1) return vectors[0];
+
+  const dim = vectors[0].length;
+  const avg = new Array<number>(dim).fill(0);
+  for (const vec of vectors) {
+    for (let i = 0; i < dim; i++) {
+      avg[i] += vec[i];
+    }
+  }
+  for (let i = 0; i < dim; i++) {
+    avg[i] /= vectors.length;
+  }
+  return normalizeVector(avg);
+}
+
+/**
  * Local embedding provider using node-llama-cpp with a GGUF model.
  *
  * - Lazily loads node-llama-cpp and the model on first embed() call
  * - Downloads the model automatically on first use (~328 MB)
  * - Produces 768-dimensional vectors (with embeddinggemma-300m)
  * - Requires node-llama-cpp as an optional dependency
+ * - Automatically chunks long texts that exceed the model's context window
  */
 export class LocalEmbeddingProvider implements EmbeddingProvider {
   readonly model: string;
   private modelPath: string;
   private context: unknown | null = null;
   private initPromise: Promise<unknown> | null = null;
+  /** Maximum safe character length for a single embedding call. */
+  private _maxChars: number = estimateMaxChars(2048); // conservative default
 
   constructor(modelPath?: string) {
     this.modelPath = modelPath ?? DEFAULT_LOCAL_MODEL;
@@ -151,6 +229,11 @@ export class LocalEmbeddingProvider implements EmbeddingProvider {
     this.model = this.modelPath.includes("/")
       ? this.modelPath.split("/").pop()!.replace(/\.gguf$/i, "")
       : this.modelPath;
+  }
+
+  /** Expose maxChars for testing and diagnostics. */
+  get maxChars(): number {
+    return this._maxChars;
   }
 
   private async ensureContext(): Promise<{
@@ -173,6 +256,13 @@ export class LocalEmbeddingProvider implements EmbeddingProvider {
         const resolved = await resolveModelFile(this.modelPath);
         const llama = await getLlama({ logLevel: LlamaLogLevel.error });
         const model = await llama.loadModel({ modelPath: resolved });
+
+        // Use the model's actual training context size to compute safe limits
+        const trainCtx = model.trainContextSize;
+        if (trainCtx && trainCtx > 0) {
+          this._maxChars = estimateMaxChars(trainCtx);
+        }
+
         const ctx = await model.createEmbeddingContext();
 
         this.context = ctx;
@@ -200,8 +290,21 @@ export class LocalEmbeddingProvider implements EmbeddingProvider {
     const results: number[][] = [];
 
     for (const text of texts) {
-      const embedding = await ctx.getEmbeddingFor(text);
-      results.push(normalizeVector(Array.from(embedding.vector)));
+      const chunks = chunkText(text, this._maxChars);
+
+      if (chunks.length === 1) {
+        // Single chunk — embed directly
+        const embedding = await ctx.getEmbeddingFor(chunks[0]);
+        results.push(normalizeVector(Array.from(embedding.vector)));
+      } else {
+        // Multiple chunks — embed each and average
+        const chunkVectors: number[][] = [];
+        for (const chunk of chunks) {
+          const embedding = await ctx.getEmbeddingFor(chunk);
+          chunkVectors.push(normalizeVector(Array.from(embedding.vector)));
+        }
+        results.push(averageVectors(chunkVectors));
+      }
     }
 
     return results;

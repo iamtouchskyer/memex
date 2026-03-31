@@ -4,6 +4,7 @@ import {
   OllamaEmbeddingProvider,
   isNodeLlamaCppAvailable,
   createEmbeddingProvider,
+  chunkText,
 } from "../../src/lib/embeddings.js";
 
 describe("isNodeLlamaCppAvailable", () => {
@@ -84,6 +85,78 @@ describe("createEmbeddingProvider", () => {
   });
 });
 
+// --- chunkText ---
+
+describe("chunkText", () => {
+  it("returns single chunk for short text", () => {
+    const result = chunkText("hello world", 100);
+    expect(result).toEqual(["hello world"]);
+  });
+
+  it("returns single chunk when text equals maxChars", () => {
+    const text = "a".repeat(100);
+    const result = chunkText(text, 100);
+    expect(result).toEqual([text]);
+  });
+
+  it("splits on paragraph boundaries", () => {
+    const text = "paragraph one\n\nparagraph two\n\nparagraph three";
+    const result = chunkText(text, 20);
+    expect(result).toEqual(["paragraph one", "paragraph two", "paragraph three"]);
+  });
+
+  it("groups paragraphs that fit together", () => {
+    const text = "short\n\nalso short\n\nthird paragraph is longer";
+    // maxChars = 25: "short\n\nalso short" = 17 chars, fits
+    const result = chunkText(text, 25);
+    expect(result).toEqual(["short\n\nalso short", "third paragraph is longer"]);
+  });
+
+  it("hard-chunks very long paragraphs", () => {
+    const text = "a".repeat(100);
+    const result = chunkText(text, 30);
+    expect(result.length).toBe(4);
+    expect(result[0]).toBe("a".repeat(30));
+    expect(result[1]).toBe("a".repeat(30));
+    expect(result[2]).toBe("a".repeat(30));
+    expect(result[3]).toBe("a".repeat(10));
+  });
+
+  it("handles mixed short and long paragraphs", () => {
+    const longPara = "x".repeat(50);
+    const text = `short\n\n${longPara}\n\nalso short`;
+    const result = chunkText(text, 30);
+    // "short" is one chunk, long para splits into two, "also short" is one
+    expect(result.length).toBe(4);
+    expect(result[0]).toBe("short");
+    expect(result[1]).toBe("x".repeat(30));
+    expect(result[2]).toBe("x".repeat(20));
+    expect(result[3]).toBe("also short");
+  });
+
+  it("filters empty chunks", () => {
+    const text = "hello\n\n\n\n\n\nworld";
+    const result = chunkText(text, 5);
+    expect(result.every((c) => c.length > 0)).toBe(true);
+  });
+
+  it("all chunks are within maxChars limit", () => {
+    // Generate a realistic long document
+    const paragraphs = Array.from({ length: 20 }, (_, i) =>
+      `Paragraph ${i}: ${"lorem ipsum dolor sit amet ".repeat(10)}`
+    );
+    const text = paragraphs.join("\n\n");
+    const maxChars = 200;
+
+    const result = chunkText(text, maxChars);
+    for (const chunk of result) {
+      expect(chunk.length).toBeLessThanOrEqual(maxChars);
+    }
+    // Verify we don't lose content: concatenated chunks should cover the text
+    expect(result.length).toBeGreaterThan(1);
+  });
+});
+
 describe("LocalEmbeddingProvider", () => {
   it("constructs with default model", () => {
     const provider = new LocalEmbeddingProvider();
@@ -99,6 +172,12 @@ describe("LocalEmbeddingProvider", () => {
     const provider = new LocalEmbeddingProvider();
     const result = await provider.embed([]);
     expect(result).toEqual([]);
+  });
+
+  it("has a default maxChars based on 2048 token context", () => {
+    const provider = new LocalEmbeddingProvider();
+    // 2048 * 1.5 * 0.9 = 2764
+    expect(provider.maxChars).toBe(2764);
   });
 
   // Slow test: actually loads the model and generates embeddings
@@ -130,6 +209,70 @@ describe("LocalEmbeddingProvider", () => {
     // Vectors should be identical
     expect(v1).toEqual(v2);
   }, 60000);
+
+  it("handles long text that exceeds context size without error", async () => {
+    const provider = new LocalEmbeddingProvider();
+
+    // Generate text much longer than the context window (~15K chars, well over 2048 tokens)
+    const longText = Array.from({ length: 50 }, (_, i) =>
+      `Section ${i}: The quick brown fox jumps over the lazy dog. ` +
+      "This is a test of the emergency broadcast system. " +
+      "All work and no play makes Jack a dull boy. " +
+      "The rain in Spain falls mainly on the plain."
+    ).join("\n\n");
+
+    expect(longText.length).toBeGreaterThan(8000);
+
+    const result = await provider.embed([longText]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].length).toBe(768);
+
+    // Should be normalized
+    const magnitude = Math.sqrt(result[0].reduce((sum, v) => sum + v * v, 0));
+    expect(magnitude).toBeCloseTo(1, 2);
+  }, 120000); // 2 min — long text = multiple chunks
+
+  it("handles long Chinese text without context overflow", async () => {
+    const provider = new LocalEmbeddingProvider();
+
+    // Chinese text is ~2 chars/token, so 5000+ Chinese chars ≈ 2500+ tokens
+    // This would overflow the 2048 token context without proper chunking
+    const chineseParagraph = "这是一段用于测试嵌入模型上下文窗口限制的中文文本。" +
+      "人工智能技术正在快速发展，大语言模型可以理解和生成自然语言。" +
+      "知识管理系统需要能够处理各种语言的文本，包括中文、日文和韩文。";
+    const longChineseText = Array.from({ length: 60 }, (_, i) =>
+      `第${i}节：${chineseParagraph}`
+    ).join("\n\n");
+
+    expect(longChineseText.length).toBeGreaterThan(5000);
+
+    const result = await provider.embed([longChineseText]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].length).toBe(768);
+
+    // Should be normalized
+    const magnitude = Math.sqrt(result[0].reduce((sum, v) => sum + v * v, 0));
+    expect(magnitude).toBeCloseTo(1, 2);
+  }, 120000);
+
+  it("handles mix of short and long texts in batch", async () => {
+    const provider = new LocalEmbeddingProvider();
+
+    const shortText = "hello world";
+    const longText = Array.from({ length: 30 }, (_, i) =>
+      `Paragraph ${i}: ${"lorem ipsum dolor sit amet consectetur adipiscing elit ".repeat(5)}`
+    ).join("\n\n");
+
+    const result = await provider.embed([shortText, longText]);
+
+    expect(result).toHaveLength(2);
+    expect(result[0].length).toBe(768);
+    expect(result[1].length).toBe(768);
+    // They should be different vectors
+    expect(result[0]).not.toEqual(result[1]);
+  }, 120000);
 });
 
 describe("OllamaEmbeddingProvider", () => {
