@@ -45,7 +45,7 @@ All platforms share the same `~/.memex/cards/` directory. A card written in Clau
 | **Claude Code** | `/plugin marketplace add iamtouchskyer/memex` then `/plugin install memex@memex` |
 | **Cursor** | First `npm install -g @touchskyer/memex`, then [one-click install](cursor://anysphere.cursor-deeplink/mcp/install?name=memex&config=eyJjb21tYW5kIjoibWVtZXgiLCJhcmdzIjpbIm1jcCJdfQ==) |
 | **Codex** | `npm install -g @touchskyer/memex && codex mcp add memex -- memex mcp` |
-| **Pi** | `npm install -g @touchskyer/memex`, then `mkdir -p ~/.pi/agent/extensions/memex && cp pi-extension/index.ts ~/.pi/agent/extensions/memex/index.ts` |
+| **Pi** | `npm install -g @touchskyer/memex && pi install npm:@touchskyer/memex` |
 | **Windsurf / others** | `npm install -g @touchskyer/memex`, then add MCP server: command `memex`, args `["mcp"]` |
 
 That's it — no extra setup needed. The MCP tool descriptions tell your agent when to recall and retro.
@@ -150,7 +150,7 @@ AI 编程 agent 的持久记忆系统。让你的 agent 跨会话记住学到的
 | **Claude Code** | `/plugin marketplace add iamtouchskyer/memex`，然后 `/plugin install memex@memex` |
 | **Cursor** | 先 `npm install -g @touchskyer/memex`，然后 [一键安装](cursor://anysphere.cursor-deeplink/mcp/install?name=memex&config=eyJjb21tYW5kIjoibWVtZXgiLCJhcmdzIjpbIm1jcCJdfQ==) |
 | **Codex** | `npm install -g @touchskyer/memex && codex mcp add memex -- memex mcp` |
-| **Pi** | `npm install -g @touchskyer/memex`，然后 `mkdir -p ~/.pi/agent/extensions/memex && cp pi-extension/index.ts ~/.pi/agent/extensions/memex/index.ts` |
+| **Pi** | `npm install -g @touchskyer/memex && pi install npm:@touchskyer/memex` |
 | **Windsurf / 其他** | `npm install -g @touchskyer/memex`，然后添加 MCP server：命令 `memex`，参数 `["mcp"]` |
 
 安装完成，无需额外配置。MCP 工具描述会自动告诉 agent 何时 recall 和 retro。
@@ -196,7 +196,7 @@ AIコーディングエージェントのための永続メモリシステム。
 | **Claude Code** | `/plugin marketplace add iamtouchskyer/memex`、その後 `/plugin install memex@memex` |
 | **Cursor** | まず `npm install -g @touchskyer/memex`、その後 [ワンクリックインストール](cursor://anysphere.cursor-deeplink/mcp/install?name=memex&config=eyJjb21tYW5kIjoibWVtZXgiLCJhcmdzIjpbIm1jcCJdfQ==) |
 | **Codex** | `npm install -g @touchskyer/memex && codex mcp add memex -- memex mcp` |
-| **Pi** | `npm install -g @touchskyer/memex`、その後 `mkdir -p ~/.pi/agent/extensions/memex && cp pi-extension/index.ts ~/.pi/agent/extensions/memex/index.ts` |
+| **Pi** | `npm install -g @touchskyer/memex && pi install npm:@touchskyer/memex` |
 | **Windsurf / その他** | `npm install -g @touchskyer/memex`、その後MCP serverを追加：コマンド `memex`、引数 `["mcp"]` |
 
 インストール完了、追加設定は不要です。MCPツールの説明がエージェントにリコールとレトロのタイミングを自動的に教えます。
@@ -250,7 +250,7 @@ AI 코딩 에이전트를 위한 영구 메모리 시스템. 에이전트가 세
 | **Claude Code** | `/plugin marketplace add iamtouchskyer/memex` 후 `/plugin install memex@memex` |
 | **Cursor** | 먼저 `npm install -g @touchskyer/memex`, 그런 다음 [원클릭 설치](cursor://anysphere.cursor-deeplink/mcp/install?name=memex&config=eyJjb21tYW5kIjoibWVtZXgiLCJhcmdzIjpbIm1jcCJdfQ==) |
 | **Codex** | `npm install -g @touchskyer/memex && codex mcp add memex -- memex mcp` |
-| **Pi** | `npm install -g @touchskyer/memex`, 그런 다음 `mkdir -p ~/.pi/agent/extensions/memex && cp pi-extension/index.ts ~/.pi/agent/extensions/memex/index.ts` |
+| **Pi** | `npm install -g @touchskyer/memex && pi install npm:@touchskyer/memex` |
 | **Windsurf / 기타** | `npm install -g @touchskyer/memex`, 그런 다음 MCP server 추가: 명령 `memex`, 인수 `["mcp"]` |
 
 설치 완료, 추가 설정이 필요 없습니다. MCP 도구 설명이 에이전트에게 리콜과 레트로 시점을 자동으로 알려줍니다.
@@ -304,7 +304,7 @@ Todas las plataformas comparten el mismo directorio `~/.memex/cards/`. Una tarje
 | **Claude Code** | `/plugin marketplace add iamtouchskyer/memex`, luego `/plugin install memex@memex` |
 | **Cursor** | Primero `npm install -g @touchskyer/memex`, luego [instalación con un clic](cursor://anysphere.cursor-deeplink/mcp/install?name=memex&config=eyJjb21tYW5kIjoibWVtZXgiLCJhcmdzIjpbIm1jcCJdfQ==) |
 | **Codex** | `npm install -g @touchskyer/memex && codex mcp add memex -- memex mcp` |
-| **Pi** | `npm install -g @touchskyer/memex`, luego `mkdir -p ~/.pi/agent/extensions/memex && cp pi-extension/index.ts ~/.pi/agent/extensions/memex/index.ts` |
+| **Pi** | `npm install -g @touchskyer/memex && pi install npm:@touchskyer/memex` |
 | **Windsurf / otros** | `npm install -g @touchskyer/memex`, luego agregar MCP server: comando `memex`, args `["mcp"]` |
 
 Instalación completa, no se requiere configuración adicional. Las descripciones de las herramientas MCP le dicen automáticamente a tu agente cuándo hacer recall y retro.

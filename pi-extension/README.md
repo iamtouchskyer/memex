@@ -6,22 +6,18 @@ Pi does not support MCP, so this extension wraps the `memex` CLI as native Pi cu
 
 ## Install
 
-**Step 1:** Install the memex CLI
-
 ```bash
-npm install -g @touchskyer/memex
+npm install -g @touchskyer/memex   # install the CLI
+pi install npm:@touchskyer/memex   # install the Pi extension
 ```
 
-**Step 2:** Copy the extension to Pi's global extensions directory
+Or install from git:
 
 ```bash
-mkdir -p ~/.pi/agent/extensions/memex
-cp pi-extension/index.ts ~/.pi/agent/extensions/memex/index.ts
+pi install git:github.com/iamtouchskyer/memex
 ```
 
-**Step 3:** Restart Pi or run `/reload`
-
-That's it. The extension auto-discovers and loads on startup.
+That's it. Pi auto-discovers the extension on startup. Run `/reload` if Pi is already running.
 
 ## What it does
 

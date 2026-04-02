@@ -8,7 +8,8 @@
     "memex": "dist/cli.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "pi-extension"
   ],
   "scripts": {
     "build": "tsc",
@@ -22,8 +23,12 @@
     "zettelkasten",
     "agent",
     "cli",
-    "knowledge-management"
+    "knowledge-management",
+    "pi-package"
   ],
+  "pi": {
+    "extensions": ["pi-extension"]
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
