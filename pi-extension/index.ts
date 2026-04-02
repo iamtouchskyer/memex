@@ -25,41 +25,47 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-
-const execFileAsync = promisify(execFile);
+import { spawn } from "node:child_process";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Run a memex CLI command and return stdout. Throws on missing CLI. */
-async function memex(
+/** Run a memex CLI command and return stdout. Uses spawn to support stdin. */
+function memex(
   args: string[],
   stdin?: string,
 ): Promise<{ stdout: string; stderr: string; ok: boolean }> {
-  try {
-    const opts: { input?: string; timeout: number } = { timeout: 30_000 };
-    if (stdin !== undefined) opts.input = stdin;
-    const { stdout, stderr } = await execFileAsync("memex", args, opts);
-    return { stdout: stdout.trim(), stderr: stderr.trim(), ok: true };
-  } catch (err: any) {
-    // execFile error – could be missing binary or non-zero exit
-    if (err.code === "ENOENT") {
-      return {
-        stdout: "",
-        stderr:
-          "memex CLI not found. Install it with: npm install -g @touchskyer/memex",
-        ok: false,
-      };
+  return new Promise((resolve) => {
+    const child = spawn("memex", args, { timeout: 30_000 });
+
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.on("data", (data: Buffer) => { stdout += data.toString(); });
+    child.stderr.on("data", (data: Buffer) => { stderr += data.toString(); });
+
+    child.on("error", (err: NodeJS.ErrnoException) => {
+      if (err.code === "ENOENT") {
+        resolve({
+          stdout: "",
+          stderr: "memex CLI not found. Install it with: npm install -g @touchskyer/memex",
+          ok: false,
+        });
+      } else {
+        resolve({ stdout: stdout.trim(), stderr: err.message, ok: false });
+      }
+    });
+
+    child.on("close", (code: number | null) => {
+      resolve({ stdout: stdout.trim(), stderr: stderr.trim(), ok: code === 0 });
+    });
+
+    if (stdin !== undefined) {
+      child.stdin.write(stdin);
+      child.stdin.end();
     }
-    return {
-      stdout: (err.stdout ?? "").trim(),
-      stderr: (err.stderr ?? err.message ?? "unknown error").trim(),
-      ok: false,
-    };
-  }
+  });
 }
 
 function textResult(text: string, isError = false) {
