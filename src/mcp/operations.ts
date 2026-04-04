@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { CardStore } from "../lib/store.js";
 import { HookRegistry } from "../lib/hooks.js";
 import { searchCommand } from "../commands/search.js";
+import type { ManifestFilter } from "../commands/search.js";
 import { readCommand } from "../commands/read.js";
 import { writeCommand } from "../commands/write.js";
 import { linksCommand } from "../commands/links.js";
@@ -22,22 +23,33 @@ export function registerOperations(
     description: "IMPORTANT: You MUST call this at the START of every new task or conversation, BEFORE doing any work. This retrieves your persistent memory — knowledge cards from previous sessions with [[bidirectional links]]. Returns the keyword index (if exists) or card list. Optionally search by query. Without calling this first, you will miss context from prior sessions and repeat past mistakes.",
     inputSchema: z.object({
       query: z.string().optional().describe("Optional search query to find specific cards"),
+      category: z.string().optional().describe("Filter by frontmatter category"),
+      tag: z.string().optional().describe("Filter by frontmatter tag"),
+      author: z.string().optional().describe("Filter by frontmatter author/source"),
+      since: z.string().optional().describe("Only cards created/modified after this date (YYYY-MM-DD)"),
+      before: z.string().optional().describe("Only cards created/modified before this date (YYYY-MM-DD)"),
     }),
-  }, async ({ query }) => {
+  }, async ({ query, category, tag, author, since, before }) => {
     await hooks.run("pre", "recall");
 
+    const filter: ManifestFilter | undefined = (category || tag || author || since || before)
+      ? { category, tag, author, since, before }
+      : undefined;
+
     if (query) {
-      const result = await searchCommand(store, query, { limit: 10 });
+      const result = await searchCommand(store, query, { limit: 10, filter });
       return { content: [{ type: "text" as const, text: result.output || "No cards found." }] };
     }
 
     // Try index first, fall back to card list
-    const indexResult = await readCommand(store, "index");
-    if (indexResult.success) {
-      return { content: [{ type: "text" as const, text: indexResult.content! }] };
+    if (!filter) {
+      const indexResult = await readCommand(store, "index");
+      if (indexResult.success) {
+        return { content: [{ type: "text" as const, text: indexResult.content! }] };
+      }
     }
 
-    const listResult = await searchCommand(store, undefined, {});
+    const listResult = await searchCommand(store, undefined, { filter });
     return { content: [{ type: "text" as const, text: listResult.output || "No cards yet." }] };
   });
 
