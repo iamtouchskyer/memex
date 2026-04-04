@@ -13,6 +13,14 @@ import { join } from "node:path";
 
 const DEFAULT_LIMIT = 10;
 
+export interface ManifestFilter {
+  category?: string;
+  tag?: string;
+  author?: string;
+  since?: string;   // YYYY-MM-DD
+  before?: string;  // YYYY-MM-DD
+}
+
 interface SearchOptions {
   limit?: number;
   all?: boolean;
@@ -21,6 +29,7 @@ interface SearchOptions {
   semantic?: boolean;
   /** Override embedding provider (for testing). */
   _embeddingProvider?: EmbeddingProvider;
+  filter?: ManifestFilter;
 }
 
 interface SearchResult {
@@ -49,7 +58,7 @@ export async function searchCommand(store: CardStore, query: string | undefined,
   const shouldPrefix = storesToSearch.length > 1;
 
   // Collect all cards from all stores
-  const allCards: Array<{ slug: string; store: CardStore; dirPrefix: string }> = [];
+  let allCards: Array<{ slug: string; store: CardStore; dirPrefix: string }> = [];
   for (const { store: s, dirPrefix } of storesToSearch) {
     const cards = await s.scanAll();
     for (const card of cards) {
@@ -58,6 +67,12 @@ export async function searchCommand(store: CardStore, query: string | undefined,
   }
 
   if (allCards.length === 0) return { output: "", exitCode: 0 };
+
+  // Apply manifest pre-filter
+  if (options.filter) {
+    allCards = await filterByManifest(allCards, options.filter);
+    if (allCards.length === 0) return { output: "", exitCode: 0 };
+  }
 
   // Semantic search path
   if (query && options.semantic) {
@@ -79,6 +94,85 @@ export async function searchCommand(store: CardStore, query: string | undefined,
 
   // With query: keyword search body only (strip frontmatter before matching)
   return keywordSearch(query, allCards, shouldPrefix, options);
+}
+
+// --- Manifest pre-filter ---
+
+async function filterByManifest(
+  allCards: Array<{ slug: string; store: CardStore; dirPrefix: string }>,
+  filter: ManifestFilter,
+): Promise<Array<{ slug: string; store: CardStore; dirPrefix: string }>> {
+  const results: Array<{ slug: string; store: CardStore; dirPrefix: string }> = [];
+
+  for (const card of allCards) {
+    const raw = await card.store.readCard(card.slug);
+    const { data } = parseFrontmatter(raw);
+
+    if (!matchesFilter(data, filter)) continue;
+    results.push(card);
+  }
+
+  return results;
+}
+
+function toDateString(val: unknown): string {
+  if (val instanceof Date) return val.toISOString().slice(0, 10);
+  if (typeof val === "string") return val.slice(0, 10);
+  return "";
+}
+
+function matchesFilter(data: Record<string, unknown>, filter: ManifestFilter): boolean {
+  // Category: exact match (case-insensitive)
+  if (filter.category) {
+    const val = data.category;
+    if (typeof val !== "string" || val.toLowerCase() !== filter.category.toLowerCase()) {
+      return false;
+    }
+  }
+
+  // Tag: check if filter value appears in tags (array or comma-separated string)
+  if (filter.tag) {
+    const needle = filter.tag.toLowerCase();
+    const raw = data.tags ?? data.tag;
+    if (raw == null) return false;
+
+    let tags: string[];
+    if (Array.isArray(raw)) {
+      tags = raw.map((t) => String(t).trim().toLowerCase());
+    } else {
+      tags = String(raw).split(",").map((t) => t.trim().toLowerCase());
+    }
+
+    if (!tags.includes(needle)) return false;
+  }
+
+  // Author: match against 'author' or 'source' field (case-insensitive)
+  if (filter.author) {
+    const needle = filter.author.toLowerCase();
+    const author = data.author;
+    const source = data.source;
+    const authorMatch = typeof author === "string" && author.toLowerCase() === needle;
+    const sourceMatch = typeof source === "string" && source.toLowerCase() === needle;
+    if (!authorMatch && !sourceMatch) return false;
+  }
+
+  // Since: card's 'created' OR 'modified' date >= filter date
+  if (filter.since) {
+    const created = toDateString(data.created);
+    const modified = toDateString(data.modified);
+    if (!(created >= filter.since || modified >= filter.since)) return false;
+  }
+
+  // Before: card's 'created' OR 'modified' date < filter date
+  if (filter.before) {
+    const created = toDateString(data.created);
+    const modified = toDateString(data.modified);
+    const createdOk = created !== "" && created < filter.before;
+    const modifiedOk = modified !== "" && modified < filter.before;
+    if (!createdOk && !modifiedOk) return false;
+  }
+
+  return true;
 }
 
 // --- Keyword search ---
