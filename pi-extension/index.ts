@@ -32,6 +32,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -102,6 +103,7 @@ export default function memexExtension(pi: ExtensionAPI) {
   // -----------------------------------------------------------------------
 
   pi.on("resources_discover", async () => {
+    if (!existsSync(skillsDir)) return;
     return {
       skillPaths: [skillsDir],
     };
