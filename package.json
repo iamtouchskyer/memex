@@ -9,7 +9,8 @@
   },
   "files": [
     "dist",
-    "pi-extension"
+    "pi-extension",
+    "skills"
   ],
   "scripts": {
     "build": "tsc",

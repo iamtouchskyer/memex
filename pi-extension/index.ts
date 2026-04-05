@@ -17,6 +17,12 @@
  *   memex_archive – archive a card
  *   memex_organize – analyze card network health
  *
+ * Session lifecycle:
+ *   before_agent_start  – injects recall reminder on first turn
+ *   agent_end           – injects retro reminder if not yet done
+ *   session_compact     – resets recall state so reminder re-injects post-compaction
+ *   resources_discover  – exposes bundled skills (memex-recall, memex-retro, etc.)
+ *
  * Commands:
  *   /memex         – show memex status and card count
  *   /memex-serve   – open visual timeline UI
@@ -26,10 +32,11 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { spawn } from "node:child_process";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+const baseDir = dirname(fileURLToPath(import.meta.url));
+const skillsDir = join(baseDir, "..", "skills");
 
 /** Run a memex CLI command and return stdout. Uses spawn to support stdin. */
 function memex(
@@ -42,14 +49,19 @@ function memex(
     let stdout = "";
     let stderr = "";
 
-    child.stdout.on("data", (data: Buffer) => { stdout += data.toString(); });
-    child.stderr.on("data", (data: Buffer) => { stderr += data.toString(); });
+    child.stdout.on("data", (data: Buffer) => {
+      stdout += data.toString();
+    });
+    child.stderr.on("data", (data: Buffer) => {
+      stderr += data.toString();
+    });
 
     child.on("error", (err: NodeJS.ErrnoException) => {
       if (err.code === "ENOENT") {
         resolve({
           stdout: "",
-          stderr: "memex CLI not found. Install it with: npm install -g @touchskyer/memex",
+          stderr:
+            "memex CLI not found. Install it with: npm install -g @touchskyer/memex",
           ok: false,
         });
       } else {
@@ -81,8 +93,19 @@ function textResult(text: string, isError = false) {
 // ---------------------------------------------------------------------------
 
 export default function memexExtension(pi: ExtensionAPI) {
-  // Track whether recall has been done this session to avoid nagging
+  // Track whether recall/retro have been done this session
   let recallDone = false;
+  let retroDone = false;
+
+  // -----------------------------------------------------------------------
+  // Resource discovery — expose bundled skills to Pi
+  // -----------------------------------------------------------------------
+
+  pi.on("resources_discover", async () => {
+    return {
+      skillPaths: [skillsDir],
+    };
+  });
 
   // -----------------------------------------------------------------------
   // Session lifecycle
@@ -90,9 +113,17 @@ export default function memexExtension(pi: ExtensionAPI) {
 
   pi.on("session_start", async (_event, _ctx) => {
     recallDone = false;
+    retroDone = false;
   });
 
-  // Inject recall reminder at the start of each agent turn
+  // After compaction the recall reminder message is summarized away.
+  // Reset recallDone so before_agent_start re-injects the reminder on
+  // the next user prompt.
+  pi.on("session_compact", async (_event, _ctx) => {
+    recallDone = false;
+  });
+
+  // Inject recall reminder at the start of each agent turn (until recall is done)
   pi.on("before_agent_start", async (_event, _ctx) => {
     if (recallDone) return;
 
@@ -116,6 +147,27 @@ export default function memexExtension(pi: ExtensionAPI) {
     };
   });
 
+  // After each agent response, remind the LLM to call memex_retro if it
+  // hasn't done so yet. Uses "nextTurn" delivery so it doesn't interrupt
+  // the current response — the reminder appears on the next user prompt.
+  pi.on("agent_end", async (_event, _ctx) => {
+    if (retroDone || !recallDone) return;
+
+    pi.sendMessage(
+      {
+        customType: "memex-retro-reminder",
+        content: [
+          "**Memex reminder:** If you learned something non-obvious in this task,",
+          "call `memex_retro` to save an atomic insight card before finishing.",
+        ].join(" "),
+        display: false,
+      },
+      {
+        deliverAs: "nextTurn",
+      },
+    );
+  });
+
   // -----------------------------------------------------------------------
   // Tool: memex_recall
   // -----------------------------------------------------------------------
@@ -127,7 +179,9 @@ export default function memexExtension(pi: ExtensionAPI) {
       "IMPORTANT: Call at the START of every task. Retrieves your persistent Zettelkasten memory — knowledge cards from previous sessions. Returns the keyword index (if exists) or card list. Optionally search by query.",
     parameters: Type.Object({
       query: Type.Optional(
-        Type.String({ description: "Optional search query to find specific cards" }),
+        Type.String({
+          description: "Optional search query to find specific cards",
+        }),
       ),
     }),
     async execute(_toolCallId, params) {
@@ -148,7 +202,9 @@ export default function memexExtension(pi: ExtensionAPI) {
 
       const listRes = await memex(["search"]);
       if (!listRes.ok) return textResult(listRes.stderr, true);
-      return textResult(listRes.stdout || "No cards yet. This is a fresh memory.");
+      return textResult(
+        listRes.stdout || "No cards yet. This is a fresh memory.",
+      );
     },
   });
 
@@ -163,7 +219,8 @@ export default function memexExtension(pi: ExtensionAPI) {
       "IMPORTANT: Call at the END of every task to save what you learned. Write one atomic insight per card with [[wikilinks]] to related cards. Only save non-obvious learnings. Handles frontmatter automatically.",
     parameters: Type.Object({
       slug: Type.String({
-        description: "Card slug in kebab-case (e.g. 'jwt-revocation-pattern')",
+        description:
+          "Card slug in kebab-case (e.g. 'jwt-revocation-pattern')",
       }),
       title: Type.String({
         description: "Card title (≤60 chars, noun phrase not sentence)",
@@ -202,6 +259,7 @@ export default function memexExtension(pi: ExtensionAPI) {
 
       const res = await memex(["write", slug], content);
       if (!res.ok) return textResult(res.stderr, true);
+      retroDone = true;
       return textResult(`Card '${slug}' saved successfully.`);
     },
   });
@@ -216,9 +274,7 @@ export default function memexExtension(pi: ExtensionAPI) {
     description:
       "Full-text search memory cards. Omit query to list all cards.",
     parameters: Type.Object({
-      query: Type.Optional(
-        Type.String({ description: "Search keyword" }),
-      ),
+      query: Type.Optional(Type.String({ description: "Search keyword" })),
       limit: Type.Optional(
         Type.Number({ description: "Max results (default 10)" }),
       ),
@@ -291,7 +347,9 @@ export default function memexExtension(pi: ExtensionAPI) {
       "Show link graph stats. Omit slug for global stats, or specify a slug for that card's links.",
     parameters: Type.Object({
       slug: Type.Optional(
-        Type.String({ description: "Card slug (omit for global stats)" }),
+        Type.String({
+          description: "Card slug (omit for global stats)",
+        }),
       ),
     }),
     async execute(_toolCallId, params) {
@@ -312,7 +370,8 @@ export default function memexExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "memex_archive",
     label: "Memex Archive",
-    description: "Archive a card (move to archive). Use for outdated or superseded cards.",
+    description:
+      "Archive a card (move to archive). Use for outdated or superseded cards.",
     parameters: Type.Object({
       slug: Type.String({ description: "Card slug to archive" }),
     }),
