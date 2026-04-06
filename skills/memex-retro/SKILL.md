@@ -1,6 +1,7 @@
 ---
 name: memex-retro
-description: MUST invoke after completing any task involving code changes, architectural decisions, debugging, or non-trivial problem solving. Skipping retro means the next session starts from zero.
+description: Save insights from completed tasks to Zettelkasten memory.
+whenToUse: After completing any task involving code changes, architectural decisions, debugging, or non-trivial problem solving. Distill what you learned into atomic memory cards so future sessions can benefit. Invoke proactively at task end — do not wait for the user to ask.
 ---
 
 # Memory Retro

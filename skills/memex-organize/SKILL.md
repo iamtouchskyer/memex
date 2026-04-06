@@ -1,6 +1,7 @@
 ---
 name: memex-organize
-description: Periodic maintenance of the Zettelkasten card network. Run on a schedule (e.g., daily) to detect orphans, hubs, and contradictions.
+description: Periodic maintenance of the Zettelkasten card network.
+whenToUse: When the user asks to organize, maintain, or clean up their memory cards. Also when running scheduled maintenance to detect orphans, hubs, contradictions, and rebuild the keyword index.
 ---
 
 # Memory Organize

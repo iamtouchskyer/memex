@@ -1,6 +1,7 @@
 ---
 name: memex-recall
-description: MUST invoke BEFORE responding to the user's first task message. Your memory is NOT loaded until you run this — the index in system-reminder was removed, you must actively retrieve it.
+description: Load prior knowledge from Zettelkasten memory before starting any task.
+whenToUse: At the START of every new conversation or task, BEFORE doing any work. This skill loads prior knowledge from the Zettelkasten memory system. Without it, you have no memory of past sessions. Invoke proactively — do not wait for the user to ask.
 ---
 
 # Memory Recall

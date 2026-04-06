@@ -1,6 +1,7 @@
 ---
 name: memex-best-practices
-description: Zettelkasten best practices for building a high-quality, long-lived knowledge graph with memex. Reference guide for card writing, naming, tagging, linking, and graph maintenance.
+description: Zettelkasten best practices for building a high-quality knowledge graph.
+whenToUse: When the user asks about how to write good memory cards, naming conventions, linking strategies, or general Zettelkasten methodology. Also useful as a reference when writing or reviewing cards.
 ---
 
 # Zettelkasten Best Practices
