@@ -6,6 +6,7 @@ export interface MemexConfig {
   nestedSlugs: boolean;
   searchDirs?: string[];
   openaiApiKey?: string;
+  openaiBaseUrl?: string;
   embeddingModel?: string;
   /** Embedding provider: "openai" | "local" | "ollama". Auto-detected if omitted. */
   embeddingProvider?: EmbeddingProviderType;
@@ -32,6 +33,7 @@ export async function readConfig(memexHome: string): Promise<MemexConfig> {
       nestedSlugs: parsed.nestedSlugs === true,
       searchDirs: Array.isArray(parsed.searchDirs) ? parsed.searchDirs : undefined,
       openaiApiKey: typeof parsed.openaiApiKey === "string" ? parsed.openaiApiKey : undefined,
+      openaiBaseUrl: typeof parsed.openaiBaseUrl === "string" ? parsed.openaiBaseUrl : undefined,
       embeddingModel: typeof parsed.embeddingModel === "string" ? parsed.embeddingModel : undefined,
       embeddingProvider: isValidProvider(parsed.embeddingProvider) ? parsed.embeddingProvider : undefined,
       ollamaModel: typeof parsed.ollamaModel === "string" ? parsed.ollamaModel : undefined,

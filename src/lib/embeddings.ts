@@ -22,11 +22,17 @@ export type EmbeddingProviderType = "openai" | "local" | "ollama";
  * OpenAI embedding provider using text-embedding-3-small (1536 dims).
  * Uses native Node `https` module — no external dependencies.
  */
-export class OpenAIEmbeddingProvider implements EmbeddingProvider {
-  readonly model = "text-embedding-3-small";
-  private apiKey: string;
+const DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small";
 
-  constructor(apiKey?: string) {
+export class OpenAIEmbeddingProvider implements EmbeddingProvider {
+  readonly model: string;
+  private apiKey: string;
+  private baseHostname: string;
+  private basePath: string;
+  private basePort: number | undefined;
+  private useHttp: boolean;
+
+  constructor(apiKey?: string, model?: string, baseUrl?: string) {
     const key = apiKey ?? process.env.OPENAI_API_KEY;
     if (!key) {
       throw new Error(
@@ -34,6 +40,14 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
       );
     }
     this.apiKey = key;
+    this.model = model ?? DEFAULT_EMBEDDING_MODEL;
+
+    const url = baseUrl ?? process.env.OPENAI_BASE_URL ?? "https://api.openai.com";
+    const parsed = new URL(url);
+    this.baseHostname = parsed.hostname;
+    this.basePath = parsed.pathname.replace(/\/$/, "");
+    this.basePort = parsed.port ? Number(parsed.port) : undefined;
+    this.useHttp = parsed.protocol === "http:";
   }
 
   async embed(texts: string[]): Promise<number[][]> {
@@ -59,18 +73,22 @@ export class OpenAIEmbeddingProvider implements EmbeddingProvider {
         input: texts,
       });
 
-      const req = httpsRequest(
-        {
-          hostname: "api.openai.com",
-          path: "/v1/embeddings",
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${this.apiKey}`,
-            "Content-Length": Buffer.byteLength(body),
-          },
+      const reqFn = this.useHttp ? httpRequest : httpsRequest;
+      const reqOptions: Record<string, unknown> = {
+        hostname: this.baseHostname,
+        path: `${this.basePath}/v1/embeddings`,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.apiKey}`,
+          "Content-Length": Buffer.byteLength(body),
         },
-        (res) => {
+      };
+      if (this.basePort) reqOptions.port = this.basePort;
+
+      const req = reqFn(
+        reqOptions as any,
+        (res: any) => {
           let data = "";
           res.on("data", (chunk: Buffer) => {
             data += chunk.toString();
@@ -404,6 +422,8 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
 export interface CreateProviderOptions {
   type?: EmbeddingProviderType;
   openaiApiKey?: string;
+  openaiBaseUrl?: string;
+  openaiModel?: string;
   localModelPath?: string;
   ollamaModel?: string;
   ollamaBaseUrl?: string;
@@ -426,7 +446,7 @@ export async function createEmbeddingProvider(
 
   // Explicit provider requested
   if (requestedType === "openai") {
-    return new OpenAIEmbeddingProvider(options.openaiApiKey);
+    return new OpenAIEmbeddingProvider(options.openaiApiKey, options.openaiModel, options.openaiBaseUrl);
   }
   if (requestedType === "local") {
     return new LocalEmbeddingProvider(options.localModelPath);
@@ -441,7 +461,7 @@ export async function createEmbeddingProvider(
   // Auto-detect: try OpenAI first, then local, then ollama
   const apiKey = options.openaiApiKey ?? process.env.OPENAI_API_KEY;
   if (apiKey) {
-    return new OpenAIEmbeddingProvider(apiKey);
+    return new OpenAIEmbeddingProvider(apiKey, options.openaiModel, options.openaiBaseUrl);
   }
 
   // Try local (node-llama-cpp)

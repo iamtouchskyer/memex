@@ -269,6 +269,7 @@ async function semanticSearch(
       provider = await createEmbeddingProvider({
         type: options.config?.embeddingProvider,
         openaiApiKey: options.config?.openaiApiKey,
+        openaiBaseUrl: options.config?.openaiBaseUrl,
         localModelPath: options.config?.localModelPath,
         ollamaModel: options.config?.ollamaModel,
         ollamaBaseUrl: options.config?.ollamaBaseUrl,
