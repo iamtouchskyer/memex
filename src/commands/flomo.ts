@@ -158,6 +158,191 @@ async function pushSingleCard(
   }
 }
 
+// ── Import ──────────────────────────────────────────────────────────
+
+export interface FlomoMemo {
+  timestamp: string;
+  content: string;
+  tags: string[];
+  slug: string;
+  title: string;
+}
+
+/**
+ * Parse flomo HTML export into structured memos.
+ * Flomo HTML structure:
+ *   <div class="memos">
+ *     <div class="memo">
+ *       <div class="time">2021-03-29 18:07:06</div>
+ *       <div class="content"><p>...</p></div>
+ *       <div class="files">...</div>
+ *     </div>
+ *   </div>
+ */
+export function parseFlomoHtml(html: string): FlomoMemo[] {
+  const memos: FlomoMemo[] = [];
+
+  // Split on memo boundaries — more robust than single regex with nested divs
+  const parts = html.split(/<div\s+class="memo">/);
+  // First part is everything before the first memo — skip it
+  for (let i = 1; i < parts.length; i++) {
+    const block = parts[i];
+
+    // Extract timestamp
+    const timeMatch = block.match(/<div\s+class="time">\s*([\s\S]*?)\s*<\/div>/);
+    const timestamp = timeMatch ? timeMatch[1].trim() : "";
+
+    // Extract content div
+    const contentMatch = block.match(/<div\s+class="content">([\s\S]*?)<\/div>\s*(?:<div\s+class="files">|$)/);
+    const rawContent = contentMatch ? contentMatch[1] : "";
+
+    // Convert HTML content to markdown
+    const markdown = htmlToMarkdown(rawContent);
+
+    // Extract hashtags from content
+    const tagMatches = markdown.match(/#[\w\u4e00-\u9fff/]+/g) || [];
+    const tags = [...new Set(tagMatches.map(t => t.replace(/^#/, "")))];
+
+    // Generate title: first line or first 50 chars
+    const firstLine = markdown.split("\n").find(l => l.trim().length > 0) || "Untitled";
+    const title = firstLine.length > 60 ? firstLine.slice(0, 57) + "..." : firstLine;
+
+    // Generate slug from content
+    const slug = generateSlug(title);
+
+    memos.push({ timestamp, content: markdown, tags, slug, title });
+  }
+
+  return memos;
+}
+
+function htmlToMarkdown(html: string): string {
+  let md = html;
+
+  // Handle line breaks
+  md = md.replace(/<br\s*\/?>/gi, "\n");
+
+  // Bold
+  md = md.replace(/<(?:b|strong)>([\s\S]*?)<\/(?:b|strong)>/gi, "**$1**");
+
+  // Italic
+  md = md.replace(/<(?:i|em)>([\s\S]*?)<\/(?:i|em)>/gi, "*$1*");
+
+  // Links
+  md = md.replace(/<a\s+href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, "[$2]($1)");
+
+  // List items
+  md = md.replace(/<li>([\s\S]*?)<\/li>/gi, "- $1\n");
+
+  // Paragraphs → double newline
+  md = md.replace(/<\/p>\s*<p>/gi, "\n\n");
+  md = md.replace(/<\/?p>/gi, "");
+
+  // Remove remaining HTML tags
+  md = md.replace(/<[^>]+>/g, "");
+
+  // Decode HTML entities
+  md = md.replace(/&amp;/g, "&");
+  md = md.replace(/&lt;/g, "<");
+  md = md.replace(/&gt;/g, ">");
+  md = md.replace(/&quot;/g, '"');
+  md = md.replace(/&#39;/g, "'");
+  md = md.replace(/&nbsp;/g, " ");
+
+  // Clean up whitespace
+  md = md.replace(/\n{3,}/g, "\n\n");
+  md = md.trim();
+
+  return md;
+}
+
+function generateSlug(text: string): string {
+  // Remove markdown formatting
+  let slug = text.replace(/[*_#\[\]()]/g, "");
+  // Remove Chinese characters for slug, keep alphanumeric
+  slug = slug.replace(/[^\w\s-]/g, "");
+  // Convert to kebab-case
+  slug = slug.trim().toLowerCase().replace(/\s+/g, "-").replace(/-+/g, "-");
+  // Limit length
+  slug = slug.slice(0, 60).replace(/-$/, "");
+  return slug || "flomo-memo";
+}
+
+export async function flomoImportCommand(
+  store: CardStore,
+  filePath: string,
+  opts: { dryRun?: boolean; raw?: boolean },
+): Promise<{ output: string; exitCode: number }> {
+  let html: string;
+  try {
+    html = await readFile(filePath, "utf-8");
+  } catch {
+    return { output: `Error: Cannot read file: ${filePath}`, exitCode: 1 };
+  }
+
+  const memos = parseFlomoHtml(html);
+  if (memos.length === 0) {
+    return { output: "No memos found in the HTML file. Expected flomo export format.", exitCode: 1 };
+  }
+
+  const lines: string[] = [];
+  let created = 0;
+  let skipped = 0;
+
+  for (const memo of memos) {
+    // Check for slug conflict
+    let slug = memo.slug;
+    const existing = await store.resolve(slug);
+    if (existing) {
+      // Try with -flomo suffix
+      const altSlug = `${slug}-flomo`;
+      const altExisting = await store.resolve(altSlug);
+      if (altExisting) {
+        lines.push(`⏭ ${slug}: already exists (and ${altSlug} too), skipping`);
+        skipped++;
+        continue;
+      }
+      slug = altSlug;
+    }
+
+    // Parse timestamp
+    const dateStr = memo.timestamp.split(" ")[0] || new Date().toISOString().split("T")[0];
+
+    const data: Record<string, unknown> = {
+      title: memo.title,
+      created: dateStr,
+      source: "flomo",
+    };
+    if (memo.tags.length > 0) {
+      data.tags = memo.tags.join(", ");
+    }
+
+    if (opts.dryRun) {
+      lines.push(`+ ${slug}: "${memo.title}" (${dateStr}, ${memo.tags.length} tags)`);
+      created++;
+      continue;
+    }
+
+    const cardContent = stringifyFrontmatter(
+      opts.raw ? memo.content : memo.content,
+      data,
+    );
+    await store.writeCard(slug, cardContent);
+    lines.push(`✓ ${slug}: "${memo.title}"`);
+    created++;
+  }
+
+  if (!opts.dryRun && created > 0) {
+    await autoSync(dirname(store.cardsDir));
+  }
+
+  lines.push("");
+  const prefix = opts.dryRun ? "[dry-run] " : "";
+  lines.push(`${prefix}Summary: ${created} ${opts.dryRun ? "would create" : "created"}, ${skipped} skipped`);
+
+  return { output: lines.join("\n"), exitCode: 0 };
+}
+
 export async function flomoPushCommand(
   store: CardStore,
   memexHome: string,

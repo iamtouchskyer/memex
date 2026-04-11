@@ -9,6 +9,8 @@ import { linksCommand } from "../commands/links.js";
 import { organizeCommand } from "../commands/organize.js";
 import { stringifyFrontmatter } from "../lib/parser.js";
 import { GitAdapter, readSyncConfig } from "../lib/sync.js";
+import { flomoPushCommand, parseFlomoHtml } from "../commands/flomo.js";
+import type { FlomoMemo } from "../commands/flomo.js";
 import { z } from "zod";
 
 export function registerOperations(
@@ -142,6 +144,43 @@ export function registerOperations(
     await hooks.run("post", "push");
 
     return { content: [{ type: "text" as const, text: result.message }], isError: !result.success };
+  });
+
+  // ---- flomo_push ----
+  server.registerTool("flomo_push", {
+    description: "Push a memex card to flomo. Requires flomo webhook URL configured via `memex flomo config --set-webhook`. Use dry_run to preview.",
+    inputSchema: z.object({
+      slug: z.string().describe("Card slug to push to flomo"),
+      dry_run: z.boolean().optional().describe("Preview without pushing"),
+    }),
+  }, async ({ slug, dry_run }) => {
+    const result = await flomoPushCommand(store, home, slug, { dryRun: dry_run });
+    return { content: [{ type: "text" as const, text: result.output }], isError: result.exitCode !== 0 };
+  });
+
+  // ---- flomo_import_parse ----
+  server.registerTool("flomo_import_parse", {
+    description: "Parse a flomo HTML export file and return structured memo data. Use this to review memos before importing them as memex cards. The agent can then curate, group, and rewrite memos into Zettelkasten-style cards using memex_write.",
+    inputSchema: z.object({
+      file_path: z.string().describe("Path to flomo HTML export file"),
+    }),
+  }, async ({ file_path }) => {
+    const { readFile } = await import("node:fs/promises");
+    let html: string;
+    try {
+      html = await readFile(file_path, "utf-8");
+    } catch {
+      return { content: [{ type: "text" as const, text: `Error: Cannot read file: ${file_path}` }], isError: true };
+    }
+    const memos = parseFlomoHtml(html);
+    if (memos.length === 0) {
+      return { content: [{ type: "text" as const, text: "No memos found. Expected flomo export HTML format." }], isError: true };
+    }
+    const summary = memos.map((m, i) =>
+      `[${i + 1}] ${m.timestamp} | ${m.title} | tags: ${m.tags.join(", ") || "none"}`
+    ).join("\n");
+    const text = `Found ${memos.length} memos:\n\n${summary}\n\nUse memex_write to create curated cards from these memos. Consider:\n- Grouping related memos into single cards\n- Rewriting as atomic Zettelkasten insights\n- Adding [[wikilinks]] to existing cards\n- Using source: flomo in frontmatter`;
+    return { content: [{ type: "text" as const, text }] };
   });
 
 }
