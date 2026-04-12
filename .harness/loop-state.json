@@ -1,12 +1,13 @@
 {
-  "tick": 21,
-  "unit": "F11.1",
-  "description": "Index updated with 19 new cards in 4 sections, 1 broken link fixed, all 25 cards verified",
-  "status": "in_progress",
+  "tick": 22,
+  "unit": "F11.2",
+  "description": "Pipeline complete at tick 22",
+  "status": "pipeline_complete",
   "artifacts": [
-    ".harness/nodes/F11.1/run_1/eval.md"
+    ".harness/nodes/F11.2/run_1/eval-curator.md",
+    ".harness/nodes/F11.2/run_1/eval-da.md"
   ],
-  "next_unit": "F11.2",
+  "next_unit": null,
   "blockers": [],
   "review_of_previous": "",
   "plan_file": ".harness/plan.md",
@@ -37,8 +38,8 @@
   ],
   "_written_by": "opc-harness",
   "_plan_hash": "20c58620f144bc27",
-  "_last_modified": "2026-04-12T12:27:29.607Z",
-  "_git_head": "24a628b28afbd45c108a7ae45e1b9a531eec9306",
+  "_last_modified": "2026-04-12T12:29:21.891Z",
+  "_git_head": "701271ba3c6fe1e834c3748c2f7f3120b942ae5f",
   "_tick_history": [
     {
       "unit": "F1.1",
@@ -144,6 +145,11 @@
       "unit": "F11.1",
       "tick": 21,
       "status": "completed"
+    },
+    {
+      "unit": "F11.2",
+      "tick": 22,
+      "status": "completed"
     }
   ],
   "_max_total_ticks": 66,
@@ -157,7 +163,7 @@
     "typecheck_script": false
   },
   "_last_review_evals": {
-    ".harness/nodes/F10.2/run_1/eval-curator.md": "0e3c61a1a6ed6427",
-    ".harness/nodes/F10.2/run_1/eval-da.md": "6ba10f5cdde8ebee"
+    ".harness/nodes/F11.2/run_1/eval-curator.md": "bce72539386a03d9",
+    ".harness/nodes/F11.2/run_1/eval-da.md": "a2e3049e0d6f5b8f"
   }
 }
