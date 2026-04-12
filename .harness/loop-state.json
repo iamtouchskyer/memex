@@ -1,12 +1,13 @@
 {
-  "tick": 1,
-  "unit": "F1.1",
-  "description": "Digested 26 产品研究 memos into 6 atomic cards. Skipped 20 pure product descriptions.",
-  "status": "completed",
+  "tick": 2,
+  "unit": "F1.2",
+  "description": "2 independent reviews: curator (ITERATE → fixes applied) + DA verification (PASS). All 4 yellow issues resolved.",
+  "status": "in_progress",
   "artifacts": [
-    ".harness/nodes/F1.1/run_1/eval.md"
+    ".harness/nodes/F1.2/run_1/eval.md",
+    ".harness/nodes/F1.2/run_1/eval-da.md"
   ],
-  "next_unit": "F1.2",
+  "next_unit": "F2.1",
   "blockers": [],
   "review_of_previous": "",
   "plan_file": ".harness/plan.md",
@@ -37,12 +38,17 @@
   ],
   "_written_by": "opc-harness",
   "_plan_hash": "20c58620f144bc27",
-  "_last_modified": "2026-04-12T11:28:38.491Z",
-  "_git_head": "580f0094bb03d1b3725bd8fdb53fdb1e7eff21d9",
+  "_last_modified": "2026-04-12T11:33:33.691Z",
+  "_git_head": "c339f11eb67f4396587b403a6a4775147095feee",
   "_tick_history": [
     {
       "unit": "F1.1",
       "tick": 1,
+      "status": "completed"
+    },
+    {
+      "unit": "F1.2",
+      "tick": 2,
       "status": "completed"
     }
   ],
@@ -55,5 +61,9 @@
     "test_script": true,
     "lint_script": false,
     "typecheck_script": false
+  },
+  "_last_review_evals": {
+    ".harness/nodes/F1.2/run_1/eval.md": "46efc18dcc42ced9",
+    ".harness/nodes/F1.2/run_1/eval-da.md": "3cbcfa159aeaf33e"
   }
 }
