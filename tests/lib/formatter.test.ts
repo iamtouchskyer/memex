@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatSearchResult, formatCardList, formatLinkStats, formatCardLinks } from "../../src/lib/formatter.js";
+import { formatSearchResult, formatCardList, formatLinkStats, formatCardLinks, formatCompactSearchResult } from "../../src/lib/formatter.js";
 
 describe("formatCardList", () => {
   it("formats slug + title pairs", () => {
@@ -64,5 +64,39 @@ describe("formatCardLinks", () => {
     expect(output).toContain("## my-card");
     expect(output).toContain("Outbound: [[out1]], [[out2]]");
     expect(output).toContain("Inbound:  [[in1]]");
+  });
+});
+
+describe("formatCompactSearchResult", () => {
+  const baseResult = {
+    slug: "jwt-migration",
+    title: "JWT Migration",
+    firstParagraph: "JWT is tricky.",
+    matchLine: null,
+    links: ["auth", "redis"],
+  };
+
+  it("returns slug and title on one line", () => {
+    const output = formatCompactSearchResult(baseResult);
+    expect(output).toContain("jwt-migration");
+    expect(output).toContain("JWT Migration");
+    expect(output.split("\n")).toHaveLength(1);
+  });
+
+  it("includes score formatted to 2 decimal places when provided", () => {
+    const output = formatCompactSearchResult(baseResult, 0.8567);
+    expect(output).toContain("[0.86]");
+  });
+
+  it("omits score bracket when no score given", () => {
+    const output = formatCompactSearchResult(baseResult);
+    expect(output).not.toContain("[");
+    expect(output).not.toContain("]");
+  });
+
+  it("is significantly shorter than formatSearchResult for the same input", () => {
+    const compact = formatCompactSearchResult(baseResult, 0.85);
+    const full = formatSearchResult(baseResult);
+    expect(compact.length).toBeLessThan(full.length);
   });
 });

@@ -107,6 +107,26 @@ When JWT revoke fails, use cache as fallback. See [[jwt-migration]].`
     const result = await searchCommand(store, "jwt");
     expect(result.output).toContain("## jwt-migration");
   });
+
+  it("compact:true produces shorter output than default", async () => {
+    const full = await searchCommand(store, "JWT");
+    const compact = await searchCommand(store, "JWT", { compact: true });
+    expect(compact.output.length).toBeLessThan(full.output.length);
+    expect(compact.output).toBeTruthy();
+  });
+
+  it("compact output contains slug and title but no heading prefix", async () => {
+    const result = await searchCommand(store, "JWT", { compact: true });
+    expect(result.output).toContain("jwt-migration");
+    expect(result.output).toContain("JWT Migration");
+    expect(result.output).not.toContain("## ");
+  });
+
+  it("compact output has no first paragraph or links section", async () => {
+    const result = await searchCommand(store, "JWT", { compact: true });
+    expect(result.output).not.toContain("Links:");
+    expect(result.output).not.toContain("JWT migration is about moving from sessions to tokens.");
+  });
 });
 
 describe("searchCommand with --all flag (multi-directory)", () => {

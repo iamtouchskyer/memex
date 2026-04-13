@@ -1,6 +1,6 @@
 import { CardStore } from "../lib/store.js";
 import { parseFrontmatter, extractLinks } from "../lib/parser.js";
-import { formatCardList, formatSearchResult } from "../lib/formatter.js";
+import { formatCardList, formatSearchResult, formatCompactSearchResult } from "../lib/formatter.js";
 import { MemexConfig } from "../lib/config.js";
 import {
   EmbeddingCache,
@@ -27,6 +27,7 @@ interface SearchOptions {
   config?: MemexConfig;
   memexHome?: string;
   semantic?: boolean;
+  compact?: boolean;
   /** Override embedding provider (for testing). */
   _embeddingProvider?: EmbeddingProvider;
   filter?: ManifestFilter;
@@ -234,18 +235,22 @@ async function keywordSearch(
 
     const prefixedSlug = shouldPrefix ? `${matched.dirPrefix}/${matched.slug}` : matched.slug;
 
+    const item = {
+      slug: prefixedSlug,
+      title: String(data.title || matched.slug),
+      firstParagraph,
+      matchLine: showMatchLine,
+      links,
+    };
+
     results.push(
-      formatSearchResult({
-        slug: prefixedSlug,
-        title: String(data.title || matched.slug),
-        firstParagraph,
-        matchLine: showMatchLine,
-        links,
-      })
+      options.compact
+        ? formatCompactSearchResult(item)
+        : formatSearchResult(item)
     );
   }
 
-  return { output: results.join("\n\n"), exitCode: 0 };
+  return { output: results.join(options.compact ? "\n" : "\n\n"), exitCode: 0 };
 }
 
 // --- Semantic search ---
@@ -332,18 +337,22 @@ async function semanticSearch(
 
     const prefixedSlug = shouldPrefix ? `${card.dirPrefix}/${card.slug}` : card.slug;
 
+    const item = {
+      slug: prefixedSlug,
+      title: String(data.title || card.slug),
+      firstParagraph,
+      matchLine: null,
+      links,
+    };
+
     results.push(
-      formatSearchResult({
-        slug: prefixedSlug,
-        title: String(data.title || card.slug),
-        firstParagraph,
-        matchLine: null,
-        links,
-      })
+      options.compact
+        ? formatCompactSearchResult(item, card.score)
+        : formatSearchResult(item)
     );
   }
 
-  return { output: results.join("\n\n"), exitCode: 0 };
+  return { output: results.join(options.compact ? "\n" : "\n\n"), exitCode: 0 };
 }
 
 /** Compute keyword match counts per card slug (same logic as keyword search). */

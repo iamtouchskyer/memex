@@ -48,19 +48,20 @@ program
   .option("--nested", "Use nested (path-preserving) slugs for this command")
   .option("--all", "Search across all configured searchDirs in addition to cards/")
   .option("-s, --semantic", "Use embedding-based semantic search")
+  .option("-c, --compact", "Compact output (one line per result)")
   .option("--category <value>", "Filter by frontmatter category")
   .option("--tag <value>", "Filter by frontmatter tag")
   .option("--author <value>", "Filter by frontmatter author/source")
   .option("--since <date>", "Only cards created/modified after this date (YYYY-MM-DD)")
   .option("--before <date>", "Only cards created/modified before this date (YYYY-MM-DD)")
-  .action(async (query: string | undefined, opts: { limit: string; nested?: boolean; all?: boolean; semantic?: boolean; category?: string; tag?: string; author?: string; since?: string; before?: string }) => {
+  .action(async (query: string | undefined, opts: { limit: string; nested?: boolean; all?: boolean; semantic?: boolean; compact?: boolean; category?: string; tag?: string; author?: string; since?: string; before?: string }) => {
     const home = process.env.MEMEX_HOME || join(homedir(), ".memex");
     const config = await readConfig(home);
     const store = await getStore({ nested: opts.nested });
     const filter = (opts.category || opts.tag || opts.author || opts.since || opts.before)
       ? { category: opts.category, tag: opts.tag, author: opts.author, since: opts.since, before: opts.before }
       : undefined;
-    const result = await searchCommand(store, query, { limit: parseInt(opts.limit), all: opts.all, config, memexHome: home, semantic: opts.semantic, filter });
+    const result = await searchCommand(store, query, { limit: parseInt(opts.limit), all: opts.all, config, memexHome: home, semantic: opts.semantic, compact: opts.compact, filter });
     if (result.output) process.stdout.write(result.output + "\n");
     process.exit(result.exitCode);
   });

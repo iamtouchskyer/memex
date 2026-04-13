@@ -205,6 +205,23 @@ Docker and Kubernetes deployment best practices.`
     expect(result.output).toContain("deployment");
     expect(provider.embedCalls.length).toBe(0);
   });
+
+  it("compact:true with semantic search returns one-line results with scores", async () => {
+    const provider = createMockProvider();
+    const result = await searchCommand(store, "login security", {
+      semantic: true,
+      memexHome: tmpDir,
+      compact: true,
+      _embeddingProvider: provider,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toBeTruthy();
+    expect(result.output).toContain("auth-patterns");
+    expect(result.output).not.toContain("## ");
+    // Should contain score brackets
+    expect(result.output).toContain("[");
+  });
 });
 
 describe("semantic search hybrid scoring", () => {
