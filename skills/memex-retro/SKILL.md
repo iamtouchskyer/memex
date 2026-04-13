@@ -76,3 +76,13 @@ Note: You do NOT need to include `modified` — the CLI auto-sets it on write.
 - **Slug**: English kebab-case, descriptive. e.g., `jwt-revocation-blacklist-pattern`
 - **Don't over-record**: Only save insights that would change how you approach a similar task in the future.
 - **Preserve frontmatter on update**: When updating an existing card, preserve its original frontmatter fields (title, created). Only append to the body. `source` is auto-managed by the MCP server.
+
+## External Source Cards (Flomo, etc.)
+
+When curating cards from external sources like flomo:
+
+- Use `source: flomo` (not `source: retro`). This is critical for anti-loopback guards.
+- **Digest, don't copy.** Read the raw memo, extract the genuine insight, rewrite as atomic Zettelkasten card.
+- Merge multiple related memos into one card when they're about the same topic.
+- Skip low-quality fragments — the bar for external imports is higher than session retro.
+- These cards follow the same quality rules above (atomic, own words, linked).

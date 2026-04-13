@@ -160,15 +160,40 @@ export function registerOperations(
 
   // ---- flomo_import_parse ----
   server.registerTool("flomo_import_parse", {
-    description: "Parse a flomo HTML export file and return structured memo data. Use this to review memos before importing them as memex cards. The agent can then curate, group, and rewrite memos into Zettelkasten-style cards using memex_write.",
+    description: "Parse a flomo HTML export file and return structured memo data. Use this to review memos before importing them as memex cards. The agent can then curate, group, and rewrite memos into Zettelkasten-style cards using memex_write. File must be an .html/.htm file.",
     inputSchema: z.object({
-      file_path: z.string().describe("Path to flomo HTML export file"),
+      file_path: z.string().describe("Path to flomo HTML export file (.html or .htm)"),
     }),
   }, async ({ file_path }) => {
     const { readFile } = await import("node:fs/promises");
+    const { resolve, extname } = await import("node:path");
+
+    // Security: validate file extension
+    const ext = extname(file_path).toLowerCase();
+    if (ext !== ".html" && ext !== ".htm") {
+      return { content: [{ type: "text" as const, text: "Error: Only .html and .htm files are accepted." }], isError: true };
+    }
+
+    // Security: resolve to absolute path and reject path traversal
+    const resolved = resolve(file_path);
+    if (resolved.includes("..") || file_path.includes("\0")) {
+      return { content: [{ type: "text" as const, text: "Error: Invalid file path." }], isError: true };
+    }
+
+    // Security: check file size before reading (max 10MB)
+    const { stat } = await import("node:fs/promises");
+    try {
+      const fileStat = await stat(resolved);
+      if (fileStat.size > 10 * 1024 * 1024) {
+        return { content: [{ type: "text" as const, text: "Error: File too large (max 10MB)." }], isError: true };
+      }
+    } catch {
+      return { content: [{ type: "text" as const, text: `Error: Cannot read file: ${file_path}` }], isError: true };
+    }
+
     let html: string;
     try {
-      html = await readFile(file_path, "utf-8");
+      html = await readFile(resolved, "utf-8");
     } catch {
       return { content: [{ type: "text" as const, text: `Error: Cannot read file: ${file_path}` }], isError: true };
     }

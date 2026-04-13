@@ -239,6 +239,20 @@ If a card's information is outdated:
 - **Update it** if the new info is a simple correction
 - **Write a new card + archive the old one** if the new understanding is significantly different
 
+## Importing from External Sources (e.g., Flomo)
+
+When importing notes from external tools like flomo, the bar is **higher** than session retro:
+
+- **Digest, don't copy.** External notes are raw material, not Zettelkasten cards. Read them, identify the genuine insight, and rewrite as an atomic card.
+- **Tag with `source: flomo`** (or the appropriate source). This enables anti-loopback guards in bidirectional sync.
+- **Merge related notes.** 5 flomo memos about the same topic → 1 card with the distilled insight.
+- **Skip garbage.** Short fragments, bookmarks without context, copy-pasted quotes with no personal insight — these don't make it in.
+- **Quality checklist still applies.** Imported cards must be atomic, in your own words, non-obvious, and linked.
+
+### Anti-Loopback Rule
+
+Cards with `source: flomo` are **never pushed back to flomo**. This is enforced in code and must not be removed. The same principle applies to any future external source: never echo content back to its origin.
+
 ## Anti-Patterns
 
 | ❌ Don't | ✅ Do Instead |
@@ -250,6 +264,8 @@ If a card's information is outdated:
 | Write essay-length cards | Keep cards atomic — split if needed |
 | Hoard tags (5+ per card) | Use 1–3 tags: one domain + one type |
 | Link without explaining why | Every `[[link]]` needs a surrounding sentence |
+| Mechanical 1:1 import from external tools | Digest and curate — external notes are raw material |
+| Push source: flomo cards back to flomo | Anti-loopback: never echo content to its origin |
 
 ## Quick Reference Card
 

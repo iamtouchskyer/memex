@@ -20,6 +20,7 @@ import { importCommand } from "./commands/import.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { migrateCommand } from "./commands/migrate.js";
 import { backlinksCommand } from "./commands/backlinks.js";
+import { organizeCommand } from "./commands/organize.js";
 import { flomoConfigCommand, flomoPushCommand, flomoImportCommand } from "./commands/flomo.js";
 
 async function getStore(opts?: { nested?: boolean }): Promise<CardStore> {
@@ -196,6 +197,18 @@ program
   );
 
 program
+  .command("organize")
+  .description("Analyze card network: orphans, hubs, conflicts, and contradiction pairs")
+  .option("--since <date>", "Only check cards modified since this date (YYYY-MM-DD)")
+  .option("--nested", "Use nested (path-preserving) slugs for this command")
+  .action(async (opts: { since?: string; nested?: boolean }) => {
+    const store = await getStore({ nested: opts.nested });
+    const result = await organizeCommand(store, opts.since ?? null);
+    if (result.output) process.stdout.write(result.output + "\n");
+    process.exit(result.exitCode);
+  });
+
+program
   .command("mcp")
   .description("Start MCP server (stdio transport)")
   .action(async () => {
@@ -304,8 +317,7 @@ flomo
   .command("import <file>")
   .description("Import memos from flomo HTML export")
   .option("--dry-run", "Preview without writing cards")
-  .option("--raw", "Import as-is without digest (preserves original memo text)")
-  .action(async (file: string, opts: { dryRun?: boolean; raw?: boolean }) => {
+  .action(async (file: string, opts: { dryRun?: boolean }) => {
     const store = await getStore();
     const result = await flomoImportCommand(store, file, opts);
     process.stdout.write(result.output + "\n");

@@ -10,22 +10,34 @@ interface FlomoConfig {
   webhookUrl?: string;
 }
 
+const FLOMO_WEBHOOK_PREFIX = "https://flomoapp.com/iwh/";
+
+function isValidFlomoWebhookUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" && parsed.hostname === "flomoapp.com" && parsed.pathname.startsWith("/iwh/") && !parsed.pathname.includes("..");
+  } catch {
+    return false;
+  }
+}
+
 export async function readFlomoConfig(memexHome: string): Promise<FlomoConfig> {
   const configPath = join(memexHome, ".memexrc");
   try {
     const content = await readFile(configPath, "utf-8");
     const parsed = JSON.parse(content);
-    return {
-      webhookUrl: typeof parsed.flomoWebhookUrl === "string" ? parsed.flomoWebhookUrl : undefined,
-    };
+    const url = typeof parsed.flomoWebhookUrl === "string" ? parsed.flomoWebhookUrl : undefined;
+    // Validate URL at read time too (defense in depth)
+    if (url && !isValidFlomoWebhookUrl(url)) return {};
+    return { webhookUrl: url };
   } catch {
     return {};
   }
 }
 
 export async function writeFlomoConfig(memexHome: string, webhookUrl: string): Promise<{ success: boolean; error?: string }> {
-  if (!webhookUrl.startsWith("https://flomoapp.com/iwh/")) {
-    return { success: false, error: "Invalid flomo webhook URL. Must start with https://flomoapp.com/iwh/" };
+  if (!isValidFlomoWebhookUrl(webhookUrl)) {
+    return { success: false, error: "Invalid flomo webhook URL. Must be https://flomoapp.com/iwh/..." };
   }
 
   const configPath = join(memexHome, ".memexrc");
@@ -119,6 +131,11 @@ async function pushSingleCard(
 
   const { data, content } = parseFrontmatter(raw);
 
+  // Anti-loopback: never push flomo-sourced cards back to flomo
+  if (data.source === "flomo") {
+    return { slug, status: "skipped", message: "Skipped: flomo-sourced card (anti-loopback)" };
+  }
+
   // Skip if already pushed
   if (data.flomoPushedAt) {
     return { slug, status: "skipped", message: `Already pushed at ${data.flomoPushedAt}` };
@@ -192,8 +209,8 @@ export function parseFlomoHtml(html: string): FlomoMemo[] {
     const timeMatch = block.match(/<div\s+class="time">\s*([\s\S]*?)\s*<\/div>/);
     const timestamp = timeMatch ? timeMatch[1].trim() : "";
 
-    // Extract content div
-    const contentMatch = block.match(/<div\s+class="content">([\s\S]*?)<\/div>\s*(?:<div\s+class="files"[^>]*>|$)/);
+    // Extract content div — use greedy match anchored on the files div to handle nested divs
+    const contentMatch = block.match(/<div\s+class="content">([\s\S]*?)<\/div>\s*<div\s+class="files"[^>]*>/);
     const rawContent = contentMatch ? contentMatch[1] : "";
 
     // Convert HTML content to markdown
@@ -275,7 +292,7 @@ function generateSlug(text: string, index?: number): string {
 export async function flomoImportCommand(
   store: CardStore,
   filePath: string,
-  opts: { dryRun?: boolean; raw?: boolean },
+  opts: { dryRun?: boolean },
 ): Promise<{ output: string; exitCode: number }> {
   let html: string;
   try {
@@ -294,19 +311,23 @@ export async function flomoImportCommand(
   let skipped = 0;
 
   for (const memo of memos) {
-    // Check for slug conflict
+    // Check for slug conflict — try incrementing suffixes
     let slug = memo.slug;
-    const existing = await store.resolve(slug);
-    if (existing) {
-      // Try with -flomo suffix
-      const altSlug = `${slug}-flomo`;
-      const altExisting = await store.resolve(altSlug);
-      if (altExisting) {
-        lines.push(`⏭ ${slug}: already exists (and ${altSlug} too), skipping`);
+    if (await store.resolve(slug)) {
+      let found = false;
+      for (let n = 1; n <= 100; n++) {
+        const candidate = n === 1 ? `${memo.slug}-flomo` : `${memo.slug}-flomo-${n}`;
+        if (!(await store.resolve(candidate))) {
+          slug = candidate;
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        lines.push(`⏭ ${memo.slug}: too many slug conflicts, skipping`);
         skipped++;
         continue;
       }
-      slug = altSlug;
     }
 
     // Parse timestamp
@@ -385,6 +406,8 @@ export async function flomoPushCommand(
       const raw = await store.readCard(card.slug);
       const { data } = parseFrontmatter(raw);
 
+      // Anti-loopback: never push flomo-sourced cards back to flomo
+      if (data.source === "flomo") continue;
       if (opts.source && data.source !== opts.source) continue;
       if (opts.tag) {
         const tagSet = new Set<string>();

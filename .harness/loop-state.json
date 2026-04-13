@@ -1,0 +1,169 @@
+{
+  "tick": 22,
+  "unit": "F11.2",
+  "description": "Pipeline complete at tick 22",
+  "status": "pipeline_complete",
+  "artifacts": [
+    ".harness/nodes/F11.2/run_1/eval-curator.md",
+    ".harness/nodes/F11.2/run_1/eval-da.md"
+  ],
+  "next_unit": null,
+  "blockers": [],
+  "review_of_previous": "",
+  "plan_file": ".harness/plan.md",
+  "units_total": 22,
+  "unit_ids": [
+    "F1.1",
+    "F1.2",
+    "F2.1",
+    "F2.2",
+    "F3.1",
+    "F3.2",
+    "F4.1",
+    "F4.2",
+    "F5.1",
+    "F5.2",
+    "F6.1",
+    "F6.2",
+    "F7.1",
+    "F7.2",
+    "F8.1",
+    "F8.2",
+    "F9.1",
+    "F9.2",
+    "F10.1",
+    "F10.2",
+    "F11.1",
+    "F11.2"
+  ],
+  "_written_by": "opc-harness",
+  "_plan_hash": "20c58620f144bc27",
+  "_last_modified": "2026-04-12T12:29:21.891Z",
+  "_git_head": "701271ba3c6fe1e834c3748c2f7f3120b942ae5f",
+  "_tick_history": [
+    {
+      "unit": "F1.1",
+      "tick": 1,
+      "status": "completed"
+    },
+    {
+      "unit": "F1.2",
+      "tick": 2,
+      "status": "completed"
+    },
+    {
+      "unit": "F2.1",
+      "tick": 3,
+      "status": "completed"
+    },
+    {
+      "unit": "F2.2",
+      "tick": 4,
+      "status": "completed"
+    },
+    {
+      "unit": "F3.1",
+      "tick": 5,
+      "status": "completed"
+    },
+    {
+      "unit": "F3.2",
+      "tick": 6,
+      "status": "completed"
+    },
+    {
+      "unit": "F4.1",
+      "tick": 7,
+      "status": "completed"
+    },
+    {
+      "unit": "F4.2",
+      "tick": 8,
+      "status": "completed"
+    },
+    {
+      "unit": "F5.1",
+      "tick": 9,
+      "status": "completed"
+    },
+    {
+      "unit": "F5.2",
+      "tick": 10,
+      "status": "completed"
+    },
+    {
+      "unit": "F6.1",
+      "tick": 11,
+      "status": "completed"
+    },
+    {
+      "unit": "F6.2",
+      "tick": 12,
+      "status": "completed"
+    },
+    {
+      "unit": "F7.1",
+      "tick": 13,
+      "status": "completed"
+    },
+    {
+      "unit": "F7.2",
+      "tick": 14,
+      "status": "completed"
+    },
+    {
+      "unit": "F8.1",
+      "tick": 15,
+      "status": "completed"
+    },
+    {
+      "unit": "F8.2",
+      "tick": 16,
+      "status": "completed"
+    },
+    {
+      "unit": "F9.1",
+      "tick": 17,
+      "status": "completed"
+    },
+    {
+      "unit": "F9.2",
+      "tick": 18,
+      "status": "completed"
+    },
+    {
+      "unit": "F10.1",
+      "tick": 19,
+      "status": "completed"
+    },
+    {
+      "unit": "F10.2",
+      "tick": 20,
+      "status": "completed"
+    },
+    {
+      "unit": "F11.1",
+      "tick": 21,
+      "status": "completed"
+    },
+    {
+      "unit": "F11.2",
+      "tick": 22,
+      "status": "completed"
+    }
+  ],
+  "_max_total_ticks": 66,
+  "_started_at": "2026-04-12T11:21:23.849Z",
+  "_max_duration_hours": 24,
+  "_write_nonce": "6ebdcd49d8d15233",
+  "_external_validators": {
+    "pre_commit_hooks": true,
+    "test_script": true,
+    "lint_script": false,
+    "typecheck_script": false
+  },
+  "_last_review_evals": {
+    ".harness/nodes/F11.2/run_1/eval-curator.md": "bce72539386a03d9",
+    ".harness/nodes/F11.2/run_1/eval-da.md": "a2e3049e0d6f5b8f"
+  }
+}

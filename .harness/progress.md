@@ -1,0 +1,22 @@
+- **Tick 1** [F1.1] (implement): Digested 26 产品研究 memos into 6 atomic cards. Skipped 20 pure product descriptions. — 2026-04-12T11:28:38.509Z
+- **Tick 2** [F1.2] (review): 2 independent reviews: curator (ITERATE → fixes applied) + DA verification (PASS). All 4 yellow issues resolved. — 2026-04-12T11:33:28.696Z
+- **Tick 3** [F2.1] (implement): Digested 20 memos into 5 atomic cards. Skipped 15 memos (industry gossip, dated predictions, personal reflections better suited for blog). — 2026-04-12T11:36:05.910Z
+- **Tick 4** [F2.2] (review): 2 independent reviews (curator ITERATE + DA ITERATE). Fixed 2 red + 3 yellow issues. Cards now have time anchors, softened claims, and mesh cross-links. — 2026-04-12T11:40:06.666Z
+- **Tick 5** [F3.1] (implement): 3 cards from 8 memos. Skipped biographical entries. — 2026-04-12T11:42:02.288Z
+- **Tick 6** [F3.2] (review): 2 reviewers, 0 red, multiple yellow. Fixed interest-rate-mismatch (added wikilinks). Other yellows are minor. — 2026-04-12T11:46:50.533Z
+- **Tick 7** [F4.1] (implement): Only 1 card from 22 memos. 经济金融 memos were knowledge dumps, Gartner memos severely outdated (2023-2024). — 2026-04-12T11:47:03.844Z
+- **Tick 8** [F4.2] (review): PASS. 1 card already reviewed in F3.2. Aggressive skip rate (21/22) is correct for knowledge dumps. — 2026-04-12T11:47:16.145Z
+- **Tick 9** [F5.1] (implement): 1 card from 25 memos (96% skip rate - mostly MSFT internal) — 2026-04-12T11:50:44.958Z
+- **Tick 10** [F5.2] (review): Curator PASS, DA PASS. 1 card quality validated, 96% skip justified. — 2026-04-12T11:59:06.269Z
+- **Tick 11** [F6.1] (implement): 3 cards from 54 memos (94% skip) — 2026-04-12T12:01:15.093Z
+- **Tick 12** [F6.2] (review): Curator PASS, DA PASS. 3 cards validated. — 2026-04-12T12:15:33.841Z
+- **Tick 13** [F7.1] (implement): 3 cards from 100 memos (97% skip - MSFT internal dominated) — 2026-04-12T12:17:34.048Z
+- **Tick 14** [F7.2] (review): Curator PASS, DA PASS. 3 cards validated. — 2026-04-12T12:18:08.702Z
+- **Tick 15** [F8.1] (implement): 1 card from 100 memos (99% skip - weakest batch) — 2026-04-12T12:19:15.864Z
+- **Tick 16** [F8.2] (review): Curator PASS, DA PASS. — 2026-04-12T12:19:38.031Z
+- **Tick 17** [F9.1] (implement): 2 cards from 111 memos (98% skip) — 2026-04-12T12:21:18.049Z
+- **Tick 18** [F9.2] (review): Curator PASS, DA PASS. — 2026-04-12T12:21:44.673Z
+- **Tick 19** [F10.1] (implement): 0 cards from 34 memos — all personal notes, fiction, or one-liners — 2026-04-12T12:22:12.147Z
+- **Tick 20** [F10.2] (review): Review of 杂项 batch: 0 cards confirmed correct by both curator and DA — 2026-04-12T12:24:53.705Z
+- **Tick 21** [F11.1] (implement): Index updated with 19 new cards in 4 sections, 1 broken link fixed, all 25 cards verified — 2026-04-12T12:27:25.103Z
+- **Tick 22** [F11.2] (review): Final verification: 31 cards, all indexed, 0 broken links, 452 tests pass — 2026-04-12T12:29:12.189Z

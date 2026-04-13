@@ -232,4 +232,35 @@ describe("flomoImportCommand", () => {
     expect(String(data.tags)).toContain("reading");
     expect(String(data.tags)).toContain("psychology");
   });
+
+  it("handles double slug collision with counter-based dedup", async () => {
+    const memos = parseFlomoHtml(SAMPLE_HTML);
+    const conflictSlug = memos[0].slug;
+
+    // Pre-create both the original slug AND the -flomo suffix
+    await store.writeCard(conflictSlug, "---\ntitle: Existing\ncreated: 2024-01-01\nsource: manual\n---\nExisting");
+    await store.writeCard(`${conflictSlug}-flomo`, "---\ntitle: Existing2\ncreated: 2024-01-01\nsource: manual\n---\nExisting2");
+
+    const htmlPath = join(testDir, "export.html");
+    await writeFile(htmlPath, SAMPLE_HTML);
+
+    const result = await flomoImportCommand(store, htmlPath, {});
+    expect(result.exitCode).toBe(0);
+
+    // Should use -flomo-2 for the conflicting one
+    const cards = await store.scanAll();
+    expect(cards.length).toBe(5); // 2 existing + 3 imported
+    const slugs = cards.map(c => c.slug);
+    expect(slugs).toContain(`${conflictSlug}-flomo-2`);
+  });
+
+  it("handles nested div content in memos", async () => {
+    const html = `<div class="memos"><div class="memo"><div class="time">2024-01-01 00:00:00</div><div class="content"><p>Before</p><div class="inner">Nested text</div><p>After</p></div><div class="files"></div></div></div>`;
+    const htmlPath = join(testDir, "nested.html");
+    await writeFile(htmlPath, html);
+
+    const result = await flomoImportCommand(store, htmlPath, {});
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("1 created");
+  });
 });
