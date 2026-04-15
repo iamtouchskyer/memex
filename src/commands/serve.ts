@@ -1,6 +1,5 @@
 import { createServer, type Server } from "node:http";
 import { join } from "node:path";
-import { homedir } from "node:os";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
@@ -8,6 +7,7 @@ import { execFile } from "node:child_process";
 import { CardStore } from "../lib/store.js";
 import { parseFrontmatter, extractLinks } from "../lib/parser.js";
 import { readSyncConfig } from "../lib/sync.js";
+import { resolveMemexHome } from "../lib/config.js";
 
 function toDateString(val: unknown): string {
   if (!val) return "";
@@ -55,7 +55,7 @@ function injectBanner(html: string): string {
 }
 
 export async function serveCommand(port: number): Promise<Server | null> {
-  const home = process.env.MEMEX_HOME || join(homedir(), ".memex");
+  const home = await resolveMemexHome();
 
   // Check if synced to GitHub → redirect to online
   const syncConfig = await readSyncConfig(home);

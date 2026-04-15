@@ -1,14 +1,13 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import { join, dirname } from "node:path";
-import { homedir } from "node:os";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8"));
 import { CardStore } from "./lib/store.js";
-import { readConfig } from "./lib/config.js";
+import { readConfig, resolveMemexHome, warnIfEmptyCards } from "./lib/config.js";
 import { writeCommand } from "./commands/write.js";
 import { readCommand } from "./commands/read.js";
 import { searchCommand } from "./commands/search.js";
@@ -24,7 +23,8 @@ import { organizeCommand } from "./commands/organize.js";
 import { flomoConfigCommand, flomoPushCommand, flomoImportCommand } from "./commands/flomo.js";
 
 async function getStore(opts?: { nested?: boolean }): Promise<CardStore> {
-  const home = process.env.MEMEX_HOME || join(homedir(), ".memex");
+  const home = await resolveMemexHome();
+  await warnIfEmptyCards(home);
   const config = await readConfig(home);
   const nestedSlugs = opts?.nested ?? config.nestedSlugs;
   return new CardStore(join(home, "cards"), join(home, "archive"), nestedSlugs);
@@ -55,7 +55,7 @@ program
   .option("--since <date>", "Only cards created/modified after this date (YYYY-MM-DD)")
   .option("--before <date>", "Only cards created/modified before this date (YYYY-MM-DD)")
   .action(async (query: string | undefined, opts: { limit: string; nested?: boolean; all?: boolean; semantic?: boolean; compact?: boolean; category?: string; tag?: string; author?: string; since?: string; before?: string }) => {
-    const home = process.env.MEMEX_HOME || join(homedir(), ".memex");
+    const home = await resolveMemexHome();
     const config = await readConfig(home);
     const store = await getStore({ nested: opts.nested });
     const filter = (opts.category || opts.tag || opts.author || opts.since || opts.before)
@@ -110,7 +110,7 @@ program
   .option("--nested", "Use nested (path-preserving) slugs for this command")
   .option("--all", "Search across all configured searchDirs in addition to cards/")
   .action(async (slug: string, opts: { nested?: boolean; all?: boolean }) => {
-    const home = process.env.MEMEX_HOME || join(homedir(), ".memex");
+    const home = await resolveMemexHome();
     const config = await readConfig(home);
     const store = await getStore({ nested: opts.nested });
     const result = await backlinksCommand(store, slug, { all: opts.all, config, memexHome: home });
@@ -149,7 +149,7 @@ program
       arg: string | undefined,
       opts: { init?: boolean; status?: boolean }
     ) => {
-      const home = process.env.MEMEX_HOME || join(homedir(), ".memex");
+      const home = await resolveMemexHome();
 
       // memex sync on / memex sync off
       if (arg === "on" || arg === "off") {
@@ -215,7 +215,7 @@ program
   .action(async () => {
     const { createMemexServer } = await import("./mcp/server.js");
     const { StdioServerTransport } = await import("@modelcontextprotocol/sdk/server/stdio.js");
-    const home = process.env.MEMEX_HOME || join(homedir(), ".memex");
+    const home = await resolveMemexHome();
     const store = await getStore();
     const server = createMemexServer(store, home);
     const transport = new StdioServerTransport();
@@ -243,7 +243,7 @@ program
   .description("Check memex health and configuration")
   .option("--check-collisions", "Check for slug collisions in basename mode")
   .action(async (opts: { checkCollisions?: boolean }) => {
-    const home = process.env.MEMEX_HOME || join(homedir(), ".memex");
+    const home = await resolveMemexHome();
     const cardsDir = join(home, "cards");
     const archiveDir = join(home, "archive");
 
@@ -262,7 +262,7 @@ program
   .description("Migrate memex configuration")
   .option("--enable-nested", "Enable nestedSlugs in config")
   .action(async (opts: { enableNested?: boolean }) => {
-    const home = process.env.MEMEX_HOME || join(homedir(), ".memex");
+    const home = await resolveMemexHome();
     const cardsDir = join(home, "cards");
     const archiveDir = join(home, "archive");
 
@@ -289,7 +289,7 @@ flomo
   .option("--set-webhook <url>", "Set the flomo webhook URL")
   .option("--show", "Show current configuration")
   .action(async (opts: { setWebhook?: string; show?: boolean }) => {
-    const home = process.env.MEMEX_HOME || join(homedir(), ".memex");
+    const home = await resolveMemexHome();
     const result = await flomoConfigCommand(home, opts);
     process.stdout.write(result.output + "\n");
     process.exit(result.exitCode);
@@ -307,7 +307,7 @@ flomo
       process.stderr.write("Error: specify a slug or use --all/--source/--tag to filter.\n");
       process.exit(1);
     }
-    const home = process.env.MEMEX_HOME || join(homedir(), ".memex");
+    const home = await resolveMemexHome();
     const store = await getStore();
     const result = await flomoPushCommand(store, home, slug, opts);
     process.stdout.write(result.output + "\n");

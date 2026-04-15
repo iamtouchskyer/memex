@@ -1,5 +1,6 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { readFile, readdir, access } from "node:fs/promises";
+import { join, dirname } from "node:path";
+import { homedir } from "node:os";
 import type { EmbeddingProviderType } from "./embeddings.js";
 
 export interface MemexConfig {
@@ -50,4 +51,55 @@ export async function readConfig(memexHome: string): Promise<MemexConfig> {
 
 function isValidProvider(value: unknown): value is EmbeddingProviderType {
   return value === "openai" || value === "local" || value === "ollama";
+}
+
+/**
+ * Walk up from `startDir` looking for a `.memexrc` file.
+ * Returns the directory containing the file, or undefined if not found.
+ * Stops at the filesystem root.
+ */
+export async function findMemexrcUp(startDir: string): Promise<string | undefined> {
+  let dir = startDir;
+  for (;;) {
+    try {
+      await access(join(dir, ".memexrc"));
+      return dir;
+    } catch {
+      // not found, keep walking
+    }
+    const parent = dirname(dir);
+    if (parent === dir) break; // reached filesystem root
+    dir = parent;
+  }
+  return undefined;
+}
+
+/**
+ * Resolve the memex home directory.
+ * Precedence: MEMEX_HOME env var > walk-up .memexrc discovery > ~/.memex fallback.
+ */
+export async function resolveMemexHome(): Promise<string> {
+  if (process.env.MEMEX_HOME) {
+    return process.env.MEMEX_HOME;
+  }
+  const found = await findMemexrcUp(process.cwd());
+  if (found) {
+    return found;
+  }
+  return join(homedir(), ".memex");
+}
+
+/**
+ * Warn to stderr if the cards directory doesn't exist or is empty.
+ */
+export async function warnIfEmptyCards(home: string): Promise<void> {
+  const cardsDir = join(home, "cards");
+  try {
+    const entries = await readdir(cardsDir);
+    if (entries.length === 0) {
+      process.stderr.write(`Warning: cards directory is empty (${cardsDir})\n`);
+    }
+  } catch {
+    process.stderr.write(`Warning: cards directory not found (${cardsDir})\n`);
+  }
 }
