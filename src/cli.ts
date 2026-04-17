@@ -30,6 +30,15 @@ async function getStore(opts?: { nested?: boolean }): Promise<CardStore> {
   return new CardStore(join(home, "cards"), join(home, "archive"), nestedSlugs);
 }
 
+/** Flush stdout before exiting to avoid pipe-buffer truncation (Node.js issue). */
+function exit(code: number): void {
+  if (process.stdout.writableLength === 0) {
+    process.exit(code);
+  } else {
+    process.stdout.once("drain", () => process.exit(code));
+  }
+}
+
 async function readStdin(): Promise<string> {
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) {
@@ -63,7 +72,7 @@ program
       : undefined;
     const result = await searchCommand(store, query, { limit: parseInt(opts.limit), all: opts.all, config, memexHome: home, semantic: opts.semantic, compact: opts.compact, filter });
     if (result.output) process.stdout.write(result.output + "\n");
-    process.exit(result.exitCode);
+    exit(result.exitCode);
   });
 
 program
@@ -77,7 +86,7 @@ program
       process.stdout.write(result.content! + "\n");
     } else {
       process.stderr.write(result.error! + "\n");
-      process.exit(1);
+      exit(1);
     }
   });
 
@@ -90,7 +99,7 @@ program
     const result = await writeCommand(store, slug, input);
     if (!result.success) {
       process.stderr.write(result.error! + "\n");
-      process.exit(1);
+      exit(1);
     }
   });
 
@@ -101,7 +110,7 @@ program
     const store = await getStore();
     const result = await linksCommand(store, slug);
     if (result.output) process.stdout.write(result.output + "\n");
-    process.exit(result.exitCode);
+    exit(result.exitCode);
   });
 
 program
@@ -115,7 +124,7 @@ program
     const store = await getStore({ nested: opts.nested });
     const result = await backlinksCommand(store, slug, { all: opts.all, config, memexHome: home });
     if (result.output) process.stdout.write(result.output + "\n");
-    process.exit(result.exitCode);
+    exit(result.exitCode);
   });
 
 program
@@ -126,7 +135,7 @@ program
     const result = await archiveCommand(store, slug);
     if (!result.success) {
       process.stderr.write(result.error! + "\n");
-      process.exit(1);
+      exit(1);
     }
   });
 
@@ -157,7 +166,7 @@ program
         if (result.output) process.stdout.write(result.output + "\n");
         if (result.error) {
           process.stderr.write(result.error + "\n");
-          process.exit(1);
+          exit(1);
         }
         return;
       }
@@ -168,7 +177,7 @@ program
         if (result.output) process.stdout.write(result.output + "\n");
         if (result.error) {
           process.stderr.write(result.error + "\n");
-          process.exit(1);
+          exit(1);
         }
         return;
       }
@@ -179,7 +188,7 @@ program
         if (result.output) process.stdout.write(result.output + "\n");
         if (result.error) {
           process.stderr.write(result.error + "\n");
-          process.exit(1);
+          exit(1);
         }
         return;
       }
@@ -192,7 +201,7 @@ program
       if (result.output) process.stdout.write(result.output + "\n");
       if (result.error) {
         process.stderr.write(result.error + "\n");
-        process.exit(1);
+        exit(1);
       }
     }
   );
@@ -206,7 +215,7 @@ program
     const store = await getStore({ nested: opts.nested });
     const result = await organizeCommand(store, opts.since ?? null);
     if (result.output) process.stdout.write(result.output + "\n");
-    process.exit(result.exitCode);
+    exit(result.exitCode);
   });
 
 program
@@ -234,7 +243,7 @@ program
     if (result.output) process.stdout.write(result.output + "\n");
     if (!result.success) {
       if (result.error) process.stderr.write(result.error + "\n");
-      process.exit(1);
+      exit(1);
     }
   });
 
@@ -250,10 +259,10 @@ program
     if (opts.checkCollisions) {
       const result = await doctorCommand(cardsDir, archiveDir);
       if (result.output) process.stdout.write(result.output + "\n");
-      process.exit(result.exitCode);
+      exit(result.exitCode);
     } else {
       process.stderr.write("No check specified. Use --check-collisions to check for slug collisions.\n");
-      process.exit(1);
+      exit(1);
     }
   });
 
@@ -271,11 +280,11 @@ program
       if (result.output) process.stdout.write(result.output + "\n");
       if (!result.success) {
         if (result.error) process.stderr.write(result.error + "\n");
-        process.exit(1);
+        exit(1);
       }
     } else {
       process.stderr.write("No migration specified. Use --enable-nested to enable nestedSlugs.\n");
-      process.exit(1);
+      exit(1);
     }
   });
 
@@ -292,7 +301,7 @@ flomo
     const home = process.env.MEMEX_HOME || join(homedir(), ".memex");
     const result = await flomoConfigCommand(home, opts);
     process.stdout.write(result.output + "\n");
-    process.exit(result.exitCode);
+    exit(result.exitCode);
   });
 
 flomo
@@ -305,13 +314,13 @@ flomo
   .action(async (slug: string | undefined, opts: { all?: boolean; source?: string; tag?: string; dryRun?: boolean }) => {
     if (!slug && !opts.all && !opts.source && !opts.tag) {
       process.stderr.write("Error: specify a slug or use --all/--source/--tag to filter.\n");
-      process.exit(1);
+      exit(1);
     }
     const home = process.env.MEMEX_HOME || join(homedir(), ".memex");
     const store = await getStore();
     const result = await flomoPushCommand(store, home, slug, opts);
     process.stdout.write(result.output + "\n");
-    process.exit(result.exitCode);
+    exit(result.exitCode);
   });
 
 flomo
@@ -322,7 +331,7 @@ flomo
     const store = await getStore();
     const result = await flomoImportCommand(store, file, opts);
     process.stdout.write(result.output + "\n");
-    process.exit(result.exitCode);
+    exit(result.exitCode);
   });
 
 program.parse();
