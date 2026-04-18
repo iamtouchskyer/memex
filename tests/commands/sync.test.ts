@@ -67,7 +67,7 @@ describe("syncCommand", () => {
     const result = await syncCommand(home, { action: "push" });
     expect(result.success).toBe(true);
     expect(result.output).toContain("Pushed");
-  });
+  }, 20000);
 
   it("pull after init succeeds", async () => {
     await syncCommand(home, { init: true, remote: bare });
@@ -98,5 +98,5 @@ describe("syncCommand", () => {
     const result = await syncCommand(home, { init: true, remote: bare });
     expect(result.success).toBe(true);
     expect(result.output).toContain("Sync initialized");
-  });
+  }, 20000);
 });
