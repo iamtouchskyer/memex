@@ -191,7 +191,7 @@ describe("LocalEmbeddingProvider", () => {
     // Should be normalized (unit vector)
     const magnitude = Math.sqrt(result[0].reduce((sum, v) => sum + v * v, 0));
     expect(magnitude).toBeCloseTo(1, 2);
-  }, 60000); // 60s timeout for model loading
+  }, 300000); // 5 min — model download + loading is slow on Windows CI
 
   it("generates different embeddings for different texts", async () => {
     const provider = new LocalEmbeddingProvider();
@@ -199,7 +199,7 @@ describe("LocalEmbeddingProvider", () => {
 
     expect(result).toHaveLength(2);
     expect(result[0]).not.toEqual(result[1]);
-  }, 60000);
+  }, 300000); // 5 min — consistent with other embedding tests
 
   it("generates consistent embeddings for the same text", async () => {
     const provider = new LocalEmbeddingProvider();
@@ -208,7 +208,7 @@ describe("LocalEmbeddingProvider", () => {
 
     // Vectors should be identical
     expect(v1).toEqual(v2);
-  }, 60000);
+  }, 300000); // 5 min — consistent with other embedding tests
 
   it("handles long text that exceeds context size without error", async () => {
     const provider = new LocalEmbeddingProvider();
