@@ -66,7 +66,7 @@ export async function serveCommand(port: number): Promise<Server | null> {
       const bin = process.platform === "darwin" ? "open"
         : process.platform === "win32" ? "start"
         : "xdg-open";
-      execFile(bin, [MEMRA_URL], () => {});
+      execFile(bin, [MEMRA_URL], { shell: process.platform === "win32" }, () => {});
     }
     return null;
   }
@@ -225,7 +225,7 @@ export async function serveCommand(port: number): Promise<Server | null> {
           const bin = process.platform === "darwin" ? "open"
             : process.platform === "win32" ? "start"
             : "xdg-open";
-          execFile(bin, [url], () => {});
+          execFile(bin, [url], { shell: process.platform === "win32" }, () => {});
         }
         resolvePromise(server);
       });
