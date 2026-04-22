@@ -24,7 +24,7 @@ Three equivalent interfaces — use whichever your environment supports:
 **Resolution order:** Try `memex` in PATH first. If not found, define a shell function and use it:
 
 ```bash
-memex() { node "$HOME/.claude/plugins/cache/cc-plugins/memex/0.1.29/dist/cli.js" "$@"; }
+memex() { node $HOME/.claude/plugins/cache/cc-plugins/memex/*/dist/cli.js "$@"; }
 ```
 
 If both CLI approaches fail, use MCP tools.

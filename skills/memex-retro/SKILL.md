@@ -22,7 +22,7 @@ Three equivalent interfaces — use whichever your environment supports:
 
 ```bash
 # Define once per session — DO NOT use variable assignment ($VAR won't expand correctly in zsh)
-memex() { node "$HOME/.claude/plugins/cache/cc-plugins/memex/0.1.29/dist/cli.js" "$@"; }
+memex() { node $HOME/.claude/plugins/cache/cc-plugins/memex/*/dist/cli.js "$@"; }
 
 # Then use normally
 memex search "some query"
