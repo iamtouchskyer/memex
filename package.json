@@ -35,7 +35,7 @@
   ],
   "pi": {
     "extensions": [
-      "pi-extension"
+      "pi-extension/index.ts"
     ]
   },
   "license": "MIT",
