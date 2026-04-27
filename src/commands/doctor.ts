@@ -10,6 +10,7 @@ export interface CheckResult {
   name: string;
   status: "ok" | "warn" | "error";
   message: string;
+  details?: string[];
 }
 
 interface CollisionGroup {
@@ -117,6 +118,7 @@ export async function checkOrphans(
       name: "Orphans",
       status: "warn",
       message,
+      details: orphans,
     };
   } catch (e) {
     return {
@@ -155,14 +157,15 @@ export async function checkBrokenLinks(
 
     let message = `${broken.length} link(s) to non-existent cards`;
     if (verbose) {
-      const details = broken.map((b) => `  ${b.from} → ${b.to}`).join("\n");
-      message += "\n" + details;
+      const detailLines = broken.map((b) => `  ${b.from} → ${b.to}`).join("\n");
+      message += "\n" + detailLines;
     }
 
     return {
       name: "Broken links",
       status: "warn",
       message,
+      details: broken.map((b) => `${b.from} → ${b.to}`),
     };
   } catch (e) {
     return {
@@ -181,7 +184,8 @@ function formatCheckResult(r: CheckResult): string {
 export async function doctorRunAll(
   cardsDir: string,
   archiveDir: string,
-  verbose?: boolean
+  verbose?: boolean,
+  json?: boolean
 ): Promise<DoctorResult> {
   const results = await Promise.all([
     checkCollisions(cardsDir, archiveDir),
@@ -189,8 +193,18 @@ export async function doctorRunAll(
     checkBrokenLinks(cardsDir, archiveDir, verbose),
   ]);
 
-  const output = results.map(formatCheckResult).join("\n");
   const hasError = results.some((r) => r.status === "error");
+
+  if (json) {
+    const jsonOutput = results.map((r) => ({
+      name: r.name,
+      status: r.status,
+      ...(r.details ? { details: r.details } : {}),
+    }));
+    return { exitCode: hasError ? 1 : 0, output: JSON.stringify(jsonOutput, null, 2) };
+  }
+
+  const output = results.map(formatCheckResult).join("\n");
   return { exitCode: hasError ? 1 : 0, output };
 }
 

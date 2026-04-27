@@ -230,4 +230,34 @@ describe("doctorRunAll", () => {
     expect(result.exitCode).toBe(1);
     expect(result.output).toContain("✗ Slug collisions");
   });
+
+  it("outputs valid JSON with --json flag", async () => {
+    await writeFile(join(cardsDir, "a.md"), "links to [[b]]");
+    await writeFile(join(cardsDir, "b.md"), "no links");
+    await writeFile(join(cardsDir, "c.md"), "links to [[missing]]");
+
+    const result = await doctorRunAll(cardsDir, archiveDir, false, true);
+    expect(result.exitCode).toBe(0);
+    const parsed = JSON.parse(result.output!);
+    expect(parsed).toHaveLength(3);
+    expect(parsed[0]).toHaveProperty("name", "Slug collisions");
+    expect(parsed[0]).toHaveProperty("status", "ok");
+    expect(parsed[1]).toHaveProperty("name", "Orphans");
+    expect(parsed[1]).toHaveProperty("status", "warn");
+    expect(parsed[1].details).toContain("a");
+    expect(parsed[2]).toHaveProperty("name", "Broken links");
+    expect(parsed[2]).toHaveProperty("status", "warn");
+    expect(parsed[2].details).toContain("c → missing");
+  });
+
+  it("omits details in JSON when check is ok", async () => {
+    await writeFile(join(cardsDir, "a.md"), "links to [[b]]");
+    await writeFile(join(cardsDir, "b.md"), "links to [[a]]");
+
+    const result = await doctorRunAll(cardsDir, archiveDir, false, true);
+    const parsed = JSON.parse(result.output!);
+    expect(parsed[0]).not.toHaveProperty("details");
+    expect(parsed[1]).not.toHaveProperty("details");
+    expect(parsed[2]).not.toHaveProperty("details");
+  });
 });

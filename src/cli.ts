@@ -255,7 +255,8 @@ program
   .description("Check memex health and configuration")
   .option("--check-collisions", "Check for slug collisions in basename mode")
   .option("--verbose", "Show detailed output for warnings")
-  .action(async (opts: { checkCollisions?: boolean; verbose?: boolean }) => {
+  .option("--json", "Output results as JSON for programmatic use")
+  .action(async (opts: { checkCollisions?: boolean; verbose?: boolean; json?: boolean }) => {
     const home = await resolveMemexHome();
     const cardsDir = join(home, "cards");
     const archiveDir = join(home, "archive");
@@ -265,7 +266,7 @@ program
       if (result.output) process.stdout.write(result.output + "\n");
       exit(result.exitCode);
     } else {
-      const result = await doctorRunAll(cardsDir, archiveDir, opts.verbose);
+      const result = await doctorRunAll(cardsDir, archiveDir, opts.verbose, opts.json);
       if (result.output) process.stdout.write(result.output + "\n");
       exit(result.exitCode);
     }
