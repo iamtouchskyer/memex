@@ -28,7 +28,7 @@ export interface SyncStatus {
 }
 
 export interface SyncAdapter {
-  init(remote?: string): Promise<void>;
+  init(remote?: string): Promise<string>;
   pull(): Promise<SyncResult>;
   push(): Promise<SyncResult>;
   sync(): Promise<SyncResult>;
@@ -105,7 +105,7 @@ async function detectRemoteBranch(home: string): Promise<string> {
 export class GitAdapter implements SyncAdapter {
   constructor(private home: string) {}
 
-  async init(remote?: string): Promise<void> {
+  async init(remote?: string): Promise<string> {
     if (!(await gitAvailable())) {
       throw new Error("git is required for sync. Install git first.");
     }
@@ -201,9 +201,11 @@ export class GitAdapter implements SyncAdapter {
     }
 
     // Commit local content first
-    // Scope add to cards/ and archive/ only (don't stage unrelated files in ~/.memex)
-    await execFile("git", ["-C", this.home, "add", "cards"]);
-    try { await execFile("git", ["-C", this.home, "add", "archive"]); } catch { /* archive dir may not exist */ }
+    // Stage .gitignore so there's always at least one file to commit
+    // (cards/ and archive/ may be empty dirs, which git can't track).
+    await execFile("git", ["-C", this.home, "add", ".gitignore"]);
+    try { await execFile("git", ["-C", this.home, "add", "cards"]); } catch { /* empty or missing */ }
+    try { await execFile("git", ["-C", this.home, "add", "archive"]); } catch { /* empty or missing */ }
     try {
       await execFile("git", [
         "-C",
@@ -247,6 +249,8 @@ export class GitAdapter implements SyncAdapter {
       adapter: "git",
       auto: false,
     });
+
+    return url;
   }
 
   /**
@@ -313,8 +317,8 @@ export class GitAdapter implements SyncAdapter {
       return { success: false, message: "Not configured." };
     }
     // Scope add to cards/ and archive/ only (don't stage unrelated files in ~/.memex)
-    await execFile("git", ["-C", this.home, "add", "cards"]);
-    try { await execFile("git", ["-C", this.home, "add", "archive"]); } catch { /* archive dir may not exist */ }
+    try { await execFile("git", ["-C", this.home, "add", "cards"]); } catch { /* empty or missing */ }
+    try { await execFile("git", ["-C", this.home, "add", "archive"]); } catch { /* empty or missing */ }
     try {
       const ts = new Date().toISOString();
       await execFile("git", ["-C", this.home, "commit", "-m", `memex sync ${ts}`]);

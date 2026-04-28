@@ -26,11 +26,11 @@ export async function syncCommand(
 
   if (opts.init) {
     try {
-      await adapter.init(opts.remote);
+      const url = await adapter.init(opts.remote);
       return {
         success: true,
         output:
-          "Sync initialized.\n\nTip: Run `memex sync on` to auto-sync after every write.",
+          `Sync initialized with ${url}\n\nTip: Run \`memex sync on\` to auto-sync after every write.`,
       };
     } catch (err) {
       return { success: false, error: (err as Error).message };
