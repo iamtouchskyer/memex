@@ -172,3 +172,61 @@ describe("serve API", () => {
     expect(res.body).toContain("Test Card");
   });
 });
+
+describe("serve --local flag", () => {
+  let tmpDir: string;
+
+  beforeAll(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "memex-serve-local-test-"));
+    await mkdir(join(tmpDir, "cards"), { recursive: true });
+    await writeFile(
+      join(tmpDir, "cards", "card.md"),
+      "---\ntitle: Card\ncreated: 2025-01-15\n---\nbody"
+    );
+    // Simulate a configured sync remote — without --local, serve would redirect.
+    await writeFile(
+      join(tmpDir, ".sync.json"),
+      JSON.stringify({ remote: "git@github.com:user/memex-cards.git", adapter: "git", auto: false })
+    );
+
+    process.env.MEMEX_HOME = tmpDir;
+    process.env.MEMEX_NO_OPEN = "1";
+  });
+
+  afterAll(async () => {
+    delete process.env.MEMEX_HOME;
+    delete process.env.MEMEX_NO_OPEN;
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("returns null (redirects) when sync configured and --local not passed", async () => {
+    const result = await serveCommand(0);
+    expect(result).toBeNull();
+  });
+
+  it("starts local server when --local passed even with sync configured", async () => {
+    const port = 10000 + Math.floor(Math.random() * 50000);
+    const server = await serveCommand(port, { local: true });
+    try {
+      expect(server).not.toBeNull();
+      const res = await get(`http://localhost:${port}/api/cards`);
+      expect(res.status).toBe(200);
+      const cards = JSON.parse(res.body);
+      expect(cards).toHaveLength(1);
+      expect(cards[0].slug).toBe("card");
+    } finally {
+      server?.close();
+    }
+  });
+
+  it("suppresses sync banner in --local mode when sync is configured", async () => {
+    const port = 10000 + Math.floor(Math.random() * 50000);
+    const server = await serveCommand(port, { local: true });
+    try {
+      const res = await get(`http://localhost:${port}/`);
+      expect(res.body).not.toContain("sync-banner");
+    } finally {
+      server?.close();
+    }
+  });
+});
