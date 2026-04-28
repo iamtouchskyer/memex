@@ -146,8 +146,9 @@ program
   .command("serve")
   .description("Start web UI for browsing cards")
   .option("-p, --port <n>", "Port number", "3939")
-  .action(async (opts: { port: string }) => {
-    await serveCommand(parseInt(opts.port));
+  .option("--local", "Force local UI even when sync is configured (skip memra.vercel.app redirect)")
+  .action(async (opts: { port: string; local?: boolean }) => {
+    await serveCommand(parseInt(opts.port), { local: opts.local });
   });
 
 program

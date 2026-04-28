@@ -81,7 +81,11 @@ memex serve
 
 Opens a visual timeline of all your cards at `localhost:3939`. Includes a **graph view** to explore bidirectional links.
 
-If you've set up sync, `memex serve` opens [memra.vercel.app](https://memra.vercel.app) — a web UI with Timeline, Graph view, and Share card.
+If you've set up sync, `memex serve` opens [memra.vercel.app](https://memra.vercel.app) — a web UI with Timeline, Graph view, and Share card. Pass `--local` to force the local UI instead (useful offline, or when you'd rather not send queries to a third-party web app):
+
+```bash
+memex serve --local
+```
 
 ![Graph View](docs/images/graph-view.png)
 

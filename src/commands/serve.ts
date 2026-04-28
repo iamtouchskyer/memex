@@ -54,12 +54,15 @@ function injectBanner(html: string): string {
   return html.replace("<body>", "<body>" + banner);
 }
 
-export async function serveCommand(port: number): Promise<Server | null> {
+export async function serveCommand(
+  port: number,
+  opts: { local?: boolean } = {}
+): Promise<Server | null> {
   const home = await resolveMemexHome();
 
-  // Check if synced to GitHub → redirect to online
+  // Check if synced to GitHub → redirect to online (unless --local was passed).
   const syncConfig = await readSyncConfig(home);
-  if (syncConfig.remote) {
+  if (syncConfig.remote && !opts.local) {
     console.log(`Cards synced to ${syncConfig.remote}`);
     console.log(`Opening ${MEMRA_URL}...`);
     if (!process.env.MEMEX_NO_OPEN) {
@@ -71,7 +74,10 @@ export async function serveCommand(port: number): Promise<Server | null> {
     return null;
   }
 
-  // No sync — serve locally with banner
+  // Local mode (either no sync configured, or --local was passed).
+  // Suppress the "set up sync" banner when sync is already configured —
+  // there is nothing to advertise.
+  const showBanner = !syncConfig.remote;
   const store = new CardStore(join(home, "cards"), join(home, "archive"));
 
   const server = createServer(async (req, res) => {
@@ -188,7 +194,7 @@ export async function serveCommand(port: number): Promise<Server | null> {
       }
 
       if (url.pathname === "/" || url.pathname === "/index.html") {
-        const html = await getHTML(true);
+        const html = await getHTML(showBanner);
         res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
         res.end(html);
         return;
@@ -220,7 +226,9 @@ export async function serveCommand(port: number): Promise<Server | null> {
       server.listen(currentPort, '127.0.0.1', () => {
         const url = `http://localhost:${currentPort}`;
         console.log(`memex is running at ${url}`);
-        console.log("💡 Tip: Run 'memex sync --init' to sync and access your cards online");
+        if (showBanner) {
+          console.log("💡 Tip: Run 'memex sync --init' to sync and access your cards online");
+        }
         if (!process.env.MEMEX_NO_OPEN) {
           const bin = process.platform === "darwin" ? "open"
             : process.platform === "win32" ? "start"
