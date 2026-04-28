@@ -154,6 +154,11 @@ export class GitAdapter implements SyncAdapter {
       }
     }
 
+    // Ensure cards/ exists. `git add cards` below would otherwise fail with
+    // "pathspec 'cards' did not match any files" on a fresh install where no
+    // card has ever been written, aborting the whole init.
+    await mkdir(join(this.home, "cards"), { recursive: true });
+
     // Init git repo if not already
     try {
       await execFile("git", ["-C", this.home, "rev-parse", "--git-dir"]);

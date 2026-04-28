@@ -339,6 +339,39 @@ describe("GitAdapter", () => {
     }
   }, 15000);
 
+  it("init succeeds when cards/ directory does not exist (fresh install)", async () => {
+    // Simulate a fresh install: blow away the cards/ dir created in beforeEach.
+    // The remote is pre-seeded to mirror the common case of syncing a new
+    // device to an existing memex-cards repo.
+    await rm(join(home, "cards"), { recursive: true });
+
+    const bare = await mkdtemp(join(tmpdir(), "memex-bare-"));
+    await execFile("git", ["init", "--bare", bare]);
+    const seed = await mkdtemp(join(tmpdir(), "memex-seed-"));
+    await execFile("git", ["init", seed]);
+    await execFile("git", ["-C", seed, "checkout", "-b", "main"]);
+    await mkdir(join(seed, "cards"), { recursive: true });
+    await writeFile(
+      join(seed, "cards", "seed.md"),
+      "---\ntitle: Seed\ncreated: 2026-03-20\n---\nseed",
+      "utf-8"
+    );
+    await execFile("git", ["-C", seed, "add", "."]);
+    await execFile("git", ["-C", seed, "commit", "-m", "seed"]);
+    await execFile("git", ["-C", seed, "remote", "add", "origin", bare]);
+    await execFile("git", ["-C", seed, "push", "-u", "origin", "main"]);
+    await execFile("git", ["-C", bare, "symbolic-ref", "HEAD", "refs/heads/main"]);
+
+    const adapter = new GitAdapter(home);
+    await adapter.init(bare);
+
+    const config = await readSyncConfig(home);
+    expect(config.remote).toBe(bare);
+
+    await rm(bare, { recursive: true });
+    await rm(seed, { recursive: true });
+  }, 20000);
+
   it("init accepts https:// URL (validation only)", async () => {
     const adapter = new GitAdapter(home);
     try {
