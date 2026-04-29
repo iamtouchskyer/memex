@@ -1,7 +1,7 @@
 {
   "name": "memex",
   "description": "Zettelkasten-based agent memory system with bidirectional links",
-  "version": "0.1.30",
+  "version": "0.1.31",
   "license": "MIT",
   "keywords": [
     "memory",
