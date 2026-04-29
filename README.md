@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/iamtouchskyer-memex-badge.png)](https://mseep.ai/app/iamtouchskyer-memex)
+
 # memex
 
 Persistent memory for AI coding agents. Your agent remembers what it learned across sessions.
