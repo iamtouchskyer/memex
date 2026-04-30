@@ -7374,6 +7374,32 @@ var init_sync = __esm({
             throw err;
           }
         }
+        let targetBranch = "main";
+        try {
+          const { stdout } = await execFile("git", [
+            "-C",
+            this.home,
+            "ls-remote",
+            "--symref",
+            "origin",
+            "HEAD"
+          ]);
+          const match = stdout.match(/ref: refs\/heads\/(\S+)\s/);
+          if (match) {
+            targetBranch = match[1];
+          }
+        } catch {
+        }
+        try {
+          await execFile("git", [
+            "-C",
+            this.home,
+            "symbolic-ref",
+            "HEAD",
+            `refs/heads/${targetBranch}`
+          ]);
+        } catch {
+        }
         await execFile("git", ["-C", this.home, "add", ".gitignore"]);
         try {
           await execFile("git", ["-C", this.home, "add", "cards"]);
@@ -7393,11 +7419,23 @@ var init_sync = __esm({
           ]);
         } catch {
         }
+        let fetched = false;
         try {
           await execFile("git", ["-C", this.home, "fetch", "origin"]);
+          fetched = true;
+        } catch {
+        }
+        if (fetched) {
           await this.normalizeBranch();
           try {
             const remoteBranch = await detectRemoteBranch(this.home);
+            await execFile("git", [
+              "-C",
+              this.home,
+              "rev-parse",
+              "--verify",
+              remoteBranch
+            ]);
             try {
               await execFile("git", [
                 "-C",
@@ -7421,7 +7459,6 @@ Then resolve conflicts and run \`memex sync --init\` again.`
           } catch (err) {
             if (err.message?.includes("Merge conflict")) throw err;
           }
-        } catch {
         }
         await execFile("git", ["-C", this.home, "push", "-u", "origin", "HEAD"]);
         await writeSyncConfig(this.home, {
@@ -40405,7 +40442,7 @@ init_sync();
 init_config();
 import { createServer } from "node:http";
 import { join as join6 } from "node:path";
-import { readFile as readFile5 } from "node:fs/promises";
+import { readFile as readFile5, access as access2 } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname as dirname7 } from "node:path";
 import { execFile as execFile2 } from "node:child_process";
@@ -40418,12 +40455,35 @@ function toDateString2(val) {
 }
 var __filename = fileURLToPath(import.meta.url);
 var __dirname = dirname7(__filename);
+async function resolveAsset(name, ...candidates) {
+  for (const p of candidates) {
+    try {
+      await access2(p);
+      return p;
+    } catch {
+    }
+  }
+  throw new Error(
+    `Could not locate asset '${name}'. Tried:
+  ${candidates.join("\n  ")}`
+  );
+}
+var SERVE_UI_HTML = resolveAsset(
+  "serve-ui.html",
+  join6(__dirname, "serve-ui.html"),
+  join6(__dirname, "commands", "serve-ui.html")
+);
+var SHARE_CARD_JS = resolveAsset(
+  "share-card.js",
+  join6(__dirname, "..", "share-card", "share-card.js"),
+  join6(__dirname, "share-card", "share-card.js")
+);
 var MEMRA_URL = "https://memra.vercel.app";
 var cachedHTML = null;
 var cachedHTMLWithBanner = null;
 async function getHTML(withBanner) {
   if (!cachedHTML) {
-    cachedHTML = await readFile5(join6(__dirname, "serve-ui.html"), "utf-8");
+    cachedHTML = await readFile5(await SERVE_UI_HTML, "utf-8");
     cachedHTMLWithBanner = injectBanner(cachedHTML);
   }
   return withBanner ? cachedHTMLWithBanner : cachedHTML;
@@ -40559,7 +40619,7 @@ async function serveCommand(port, opts = {}) {
         return;
       }
       if (url2.pathname === "/share-card.js") {
-        const js = await readFile5(join6(__dirname, "..", "share-card", "share-card.js"), "utf-8");
+        const js = await readFile5(await SHARE_CARD_JS, "utf-8");
         const stripped = js.replace(/^export /gm, "");
         const wrapped = `(function(){
 ${stripped}

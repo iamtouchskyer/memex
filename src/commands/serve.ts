@@ -1,6 +1,6 @@
 import { createServer, type Server } from "node:http";
 import { join } from "node:path";
-import { readFile } from "node:fs/promises";
+import { readFile, access } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 import { execFile } from "node:child_process";
@@ -21,6 +21,34 @@ function toDateString(val: unknown): string {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// Asset resolution works in two layouts:
+//   - source / vitest:   __dirname = src/commands  → serve-ui.html sits next to this file,
+//                        share-card.js at ../share-card/share-card.js
+//   - bundled dist/cli.js: __dirname = dist        → postbuild copies assets to
+//                        dist/commands/serve-ui.html and dist/share-card/share-card.js
+async function resolveAsset(name: string, ...candidates: string[]): Promise<string> {
+  for (const p of candidates) {
+    try {
+      await access(p);
+      return p;
+    } catch {}
+  }
+  throw new Error(
+    `Could not locate asset '${name}'. Tried:\n  ${candidates.join("\n  ")}`
+  );
+}
+
+const SERVE_UI_HTML = resolveAsset(
+  "serve-ui.html",
+  join(__dirname, "serve-ui.html"),
+  join(__dirname, "commands", "serve-ui.html")
+);
+const SHARE_CARD_JS = resolveAsset(
+  "share-card.js",
+  join(__dirname, "..", "share-card", "share-card.js"),
+  join(__dirname, "share-card", "share-card.js")
+);
+
 const MEMRA_URL = "https://memra.vercel.app";
 
 let cachedHTML: string | null = null;
@@ -28,7 +56,7 @@ let cachedHTMLWithBanner: string | null = null;
 
 async function getHTML(withBanner: boolean): Promise<string> {
   if (!cachedHTML) {
-    cachedHTML = await readFile(join(__dirname, "serve-ui.html"), "utf-8");
+    cachedHTML = await readFile(await SERVE_UI_HTML, "utf-8");
     cachedHTMLWithBanner = injectBanner(cachedHTML);
   }
   return withBanner ? cachedHTMLWithBanner! : cachedHTML;
@@ -185,7 +213,7 @@ export async function serveCommand(
       }
 
       if (url.pathname === "/share-card.js") {
-        const js = await readFile(join(__dirname, "..", "share-card", "share-card.js"), "utf-8");
+        const js = await readFile(await SHARE_CARD_JS, "utf-8");
         const stripped = js.replace(/^export /gm, "");
         const wrapped = `(function(){\n${stripped}\nwindow.createShareCard = createShareCard;\n})();`;
         res.writeHead(200, { "Content-Type": "application/javascript; charset=utf-8" });
