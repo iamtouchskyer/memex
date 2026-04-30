@@ -74,4 +74,53 @@ describe("linksCommand", () => {
     expect(result.output).toContain("Showing: orphan");
     expect(result.output).toContain("Total cards: 4");
   });
+
+  it("outputs JSON array for global links", async () => {
+    const result = await linksCommand(store, undefined, { json: true });
+    const data = JSON.parse(result.output);
+    expect(Array.isArray(data)).toBe(true);
+    expect(data).toHaveLength(3);
+    const a = data.find((d: any) => d.slug === "a");
+    expect(a).toBeDefined();
+    expect(a.outbound).toBe(2);
+    expect(a.inbound).toBe(1);
+  });
+
+  it("outputs JSON for specific card", async () => {
+    const result = await linksCommand(store, "a", { json: true });
+    const data = JSON.parse(result.output);
+    expect(data.slug).toBe("a");
+    expect(data.outbound).toEqual(["b", "c"]);
+    expect(data.inbound).toEqual(["b"]);
+  });
+
+  it("outputs JSON stats summary", async () => {
+    const result = await linksCommand(store, undefined, { json: true, stats: true });
+    const data = JSON.parse(result.output);
+    expect(data.totalCards).toBe(3);
+    expect(data.showing).toBe("all");
+    expect(data.count).toBe(3);
+    expect(data.orphans).toBe(0);
+    expect(data.hubs).toBe(0);
+    expect(typeof data.avgOutbound).toBe("number");
+    expect(typeof data.avgInbound).toBe("number");
+  });
+
+  it("outputs JSON with filter", async () => {
+    await writeFile(join(tmpDir, "cards", "orphan.md"), "---\ntitle: Orphan\n---\nNo one links here.");
+    const result = await linksCommand(store, undefined, { json: true, filter: "orphan" });
+    const data = JSON.parse(result.output);
+    expect(Array.isArray(data)).toBe(true);
+    expect(data.every((d: any) => d.inbound === 0)).toBe(true);
+    expect(data.some((d: any) => d.slug === "orphan")).toBe(true);
+  });
+
+  it("outputs JSON stats with filter", async () => {
+    await writeFile(join(tmpDir, "cards", "orphan.md"), "---\ntitle: Orphan\n---\nNo one links here.");
+    const result = await linksCommand(store, undefined, { json: true, stats: true, filter: "orphan" });
+    const data = JSON.parse(result.output);
+    expect(data.showing).toBe("orphan");
+    expect(data.count).toBe(1);
+    expect(data.totalCards).toBe(4);
+  });
 });

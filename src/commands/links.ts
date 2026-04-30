@@ -12,6 +12,7 @@ interface LinksResult {
 export interface LinksOptions {
   filter?: "orphan" | "hub";
   stats?: boolean;
+  json?: boolean;
 }
 
 export async function linksCommand(store: CardStore, slug: string | undefined, opts?: LinksOptions): Promise<LinksResult> {
@@ -41,6 +42,9 @@ export async function linksCommand(store: CardStore, slug: string | undefined, o
   if (slug) {
     const outbound = outboundMap.get(slug) || [];
     const inbound = inboundMap.get(slug) || [];
+    if (opts?.json) {
+      return { output: JSON.stringify({ slug, outbound, inbound }, null, 2), exitCode: 0 };
+    }
     return { output: formatCardLinks(slug, outbound, inbound), exitCode: 0 };
   }
 
@@ -55,6 +59,28 @@ export async function linksCommand(store: CardStore, slug: string | undefined, o
     stats = stats.filter((s) => s.inbound === 0);
   } else if (filter === "hub") {
     stats = stats.filter((s) => s.inbound >= HUB_THRESHOLD);
+  }
+
+  if (opts?.json) {
+    if (opts?.stats) {
+      const orphans = stats.filter((s) => s.inbound === 0).length;
+      const hubs = stats.filter((s) => s.inbound >= HUB_THRESHOLD).length;
+      const totalOut = stats.reduce((sum, s) => sum + s.outbound, 0);
+      const totalIn = stats.reduce((sum, s) => sum + s.inbound, 0);
+      return {
+        output: JSON.stringify({
+          totalCards: cards.length,
+          showing: filter || "all",
+          count: stats.length,
+          orphans,
+          hubs,
+          avgOutbound: stats.length > 0 ? +(totalOut / stats.length).toFixed(1) : 0,
+          avgInbound: stats.length > 0 ? +(totalIn / stats.length).toFixed(1) : 0,
+        }, null, 2),
+        exitCode: 0,
+      };
+    }
+    return { output: JSON.stringify(stats, null, 2), exitCode: 0 };
   }
 
   if (opts?.stats) {
