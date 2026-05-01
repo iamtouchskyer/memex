@@ -18,7 +18,7 @@
     "GEMINI.md"
   ],
   "scripts": {
-    "prepare": "[ -d .git ] && cp scripts/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit || true",
+    "prepare": "node -e \"const fs=require('fs'),p=require('path');if(fs.existsSync('.git')){fs.mkdirSync(p.join('.git','hooks'),{recursive:true});fs.copyFileSync(p.join('scripts','pre-commit'),p.join('.git','hooks','pre-commit'))}\" || true",
     "build": "node scripts/bundle.mjs",
     "postbuild": "node scripts/postbuild.mjs",
     "prepublishOnly": "npm run build",
