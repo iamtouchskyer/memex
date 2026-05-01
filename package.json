@@ -18,7 +18,7 @@
     "GEMINI.md"
   ],
   "scripts": {
-    "prepare": "node -e \"const fs=require('fs'),p=require('path');if(fs.existsSync('.git')){fs.mkdirSync(p.join('.git','hooks'),{recursive:true});fs.copyFileSync(p.join('scripts','pre-commit'),p.join('.git','hooks','pre-commit'))}\" || true",
+    "prepare": "node -e \"const fs=require('fs'),p=require('path');if(fs.existsSync('.git')){fs.mkdirSync(p.join('.git','hooks'),{recursive:true});fs.copyFileSync(p.join('scripts','pre-commit'),p.join('.git','hooks','pre-commit'));if(process.platform!=='win32')fs.chmodSync(p.join('.git','hooks','pre-commit'),0o755)}\" || true",
     "build": "node scripts/bundle.mjs",
     "postbuild": "node scripts/postbuild.mjs",
     "prepublishOnly": "npm run build",
