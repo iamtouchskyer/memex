@@ -60,7 +60,7 @@ describe("syncCommand", () => {
   it("sync without init fails gracefully", async () => {
     const result = await syncCommand(home, {});
     expect(result.success).toBe(false);
-  });
+  }, 30000); // Increase timeout to 30s for Windows compatibility
 
   it("push after init succeeds (does not corrupt remote)", async () => {
     await syncCommand(home, { init: true, remote: bare });

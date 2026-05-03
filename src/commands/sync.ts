@@ -86,19 +86,31 @@ export async function syncCommand(
   // Default: sync
   const config = await readSyncConfig(home);
   if (!config.remote) {
-    // Detect user state for better guidance
+    // Detect user state for better guidance (with timeout to avoid CI hangs)
     let hint = "";
-    try {
+    
+    // Helper function to run commands with timeout
+    const execWithTimeout = async (command: string, args: string[], timeoutMs: number = 5000): Promise<{ stdout: string }> => {
       const { execFile: execFileCb } = await import("node:child_process");
       const { promisify } = await import("node:util");
       const execFile = promisify(execFileCb);
-      await execFile("gh", ["--version"]);
-      // gh available — check if they have an existing repo
+      
+      return Promise.race([
+        execFile(command, args),
+        new Promise<never>((_, reject) => 
+          setTimeout(() => reject(new Error(`Command timeout: ${command}`)), timeoutMs)
+        )
+      ]);
+    };
+    
+    try {
+      await execWithTimeout("gh", ["--version"], 3000);
+      // gh available — check if they have an existing repo (but with timeout)
       try {
-        const { stdout: user } = await execFile("gh", ["api", "user", "-q", ".login"]);
-        const { stdout: repoUrl } = await execFile("gh", [
+        const { stdout: user } = await execWithTimeout("gh", ["api", "user", "-q", ".login"], 5000);
+        const { stdout: repoUrl } = await execWithTimeout("gh", [
           "repo", "view", `${user.trim()}/memex-cards`, "--json", "url", "-q", ".url",
-        ]);
+        ], 5000);
         hint = `\n\nDetected existing repo: ${repoUrl.trim()}\nRun: memex sync --init`;
       } catch {
         hint = "\n\nNo existing memex-cards repo found. Run: memex sync --init\n(This will create a private GitHub repo automatically.)";
