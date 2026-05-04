@@ -193,4 +193,210 @@ describe("validateSlug (unit)", () => {
     expect(() => validateSlug("sub/my-card")).not.toThrow();
     expect(() => validateSlug("a.b.c")).not.toThrow();
   });
+
+  it("throws on backslash path traversal", () => {
+    expect(() => validateSlug("a\\..\\b")).toThrow("path segments must not be");
+  });
+
+  it("throws on leading backslash", () => {
+    expect(() => validateSlug("\\foo")).toThrow("empty path segments");
+  });
+
+  it("throws on trailing backslash", () => {
+    expect(() => validateSlug("foo\\")).toThrow("empty path segments");
+  });
+
+  it("throws on double backslash", () => {
+    expect(() => validateSlug("a\\\\b")).toThrow("empty path segments");
+  });
+
+  it("throws on dots-and-backslashes-only", () => {
+    expect(() => validateSlug(".\\..")).toThrow("only of dots and slashes");
+  });
+
+  it("throws on leading slash", () => {
+    expect(() => validateSlug("/foo")).toThrow("empty path segments");
+  });
+
+  it("throws on dot-dot path segment with forward slash", () => {
+    expect(() => validateSlug("a/../b")).toThrow("path segments must not be");
+  });
+});
+
+describe("CardStore with nestedSlugs", () => {
+  let tmpDir: string;
+  let cardsDir: string;
+  let archiveDir: string;
+  let store: CardStore;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "memex-nested-test-"));
+    cardsDir = join(tmpDir, "cards");
+    archiveDir = join(tmpDir, "archive");
+    await mkdir(cardsDir, { recursive: true });
+    await mkdir(archiveDir, { recursive: true });
+    store = new CardStore(cardsDir, archiveDir, true);
+  });
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  describe("scanAll with nestedSlugs", () => {
+    it("returns nested slugs with path preserved", async () => {
+      await writeFile(join(cardsDir, "a.md"), "---\ntitle: A\n---\n");
+      await mkdir(join(cardsDir, "sub"), { recursive: true });
+      await writeFile(join(cardsDir, "sub", "b.md"), "---\ntitle: B\n---\n");
+      await mkdir(join(cardsDir, "sub", "deep"), { recursive: true });
+      await writeFile(join(cardsDir, "sub", "deep", "c.md"), "---\ntitle: C\n---\n");
+
+      const files = await store.scanAll();
+      const slugs = files.map((f) => f.slug).sort();
+      expect(slugs).toEqual(["a", "sub/b", "sub/deep/c"]);
+    });
+  });
+
+  describe("resolve with nestedSlugs", () => {
+    it("finds card by nested slug", async () => {
+      await mkdir(join(cardsDir, "sub"), { recursive: true });
+      await writeFile(join(cardsDir, "sub", "nested.md"), "content");
+      const path = await store.resolve("sub/nested");
+      expect(path).toBe(join(cardsDir, "sub", "nested.md"));
+    });
+
+    it("finds card by flat slug", async () => {
+      await writeFile(join(cardsDir, "flat.md"), "content");
+      const path = await store.resolve("flat");
+      expect(path).toBe(join(cardsDir, "flat.md"));
+    });
+
+    it("returns null when nested slug not found", async () => {
+      const path = await store.resolve("sub/nonexistent");
+      expect(path).toBeNull();
+    });
+  });
+
+  describe("readCard with nestedSlugs", () => {
+    it("reads card by nested slug", async () => {
+      const content = "---\ntitle: Test\n---\nBody";
+      await mkdir(join(cardsDir, "sub"), { recursive: true });
+      await writeFile(join(cardsDir, "sub", "test.md"), content);
+      const result = await store.readCard("sub/test");
+      expect(result).toBe(content);
+    });
+  });
+
+  describe("writeCard with nestedSlugs", () => {
+    it("writes card with nested slug", async () => {
+      const content = "---\ntitle: New\n---\nBody";
+      await store.writeCard("sub/new-card", content);
+      const written = await readFile(join(cardsDir, "sub", "new-card.md"), "utf-8");
+      expect(written).toBe(content);
+    });
+
+    it("overwrites existing nested card", async () => {
+      await mkdir(join(cardsDir, "sub"), { recursive: true });
+      await writeFile(join(cardsDir, "sub", "existing.md"), "old");
+      await store.writeCard("sub/existing", "new");
+      const written = await readFile(join(cardsDir, "sub", "existing.md"), "utf-8");
+      expect(written).toBe("new");
+    });
+  });
+
+  describe("archiveCard with nestedSlugs", () => {
+    it("moves nested card to archive", async () => {
+      await mkdir(join(cardsDir, "sub"), { recursive: true });
+      await writeFile(join(cardsDir, "sub", "old.md"), "content");
+      await store.archiveCard("sub/old");
+
+      const archivedPath = join(archiveDir, "sub/old.md");
+      const content = await readFile(archivedPath, "utf-8");
+      expect(content).toBe("content");
+
+      await expect(store.resolve("sub/old")).resolves.toBeNull();
+    });
+  });
+
+  describe("resolveLink", () => {
+    let nestedStore: CardStore;
+
+    beforeEach(async () => {
+      nestedStore = new CardStore(cardsDir, archiveDir, true);
+    });
+
+    it("resolves exact slug match", async () => {
+      await writeFile(join(cardsDir, "hello.md"), "content");
+      expect(await nestedStore.resolveLink("hello")).toBe("hello");
+    });
+
+    it("resolves nested slug by exact path", async () => {
+      await mkdir(join(cardsDir, "projects"), { recursive: true });
+      await writeFile(join(cardsDir, "projects", "foo.md"), "content");
+      expect(await nestedStore.resolveLink("projects/foo")).toBe("projects/foo");
+    });
+
+    it("resolves basename to nested slug when unambiguous", async () => {
+      await mkdir(join(cardsDir, "projects"), { recursive: true });
+      await writeFile(join(cardsDir, "projects", "bar.md"), "content");
+      // No root-level bar.md, so "bar" should resolve to "projects/bar"
+      expect(await nestedStore.resolveLink("bar")).toBe("projects/bar");
+    });
+
+    it("returns null for ambiguous basename", async () => {
+      await mkdir(join(cardsDir, "projects"), { recursive: true });
+      await mkdir(join(cardsDir, "cards"), { recursive: true });
+      await writeFile(join(cardsDir, "projects", "dup.md"), "content");
+      await writeFile(join(cardsDir, "cards", "dup.md"), "content");
+      // Two cards with basename "dup" — ambiguous
+      expect(await nestedStore.resolveLink("dup")).toBeNull();
+    });
+
+    it("prefers exact match over basename fallback", async () => {
+      await mkdir(join(cardsDir, "projects"), { recursive: true });
+      await writeFile(join(cardsDir, "baz.md"), "content");
+      await writeFile(join(cardsDir, "projects", "baz.md"), "content");
+      // Exact match for "baz" exists at root
+      expect(await nestedStore.resolveLink("baz")).toBe("baz");
+    });
+
+    it("returns null for non-existent slug", async () => {
+      expect(await nestedStore.resolveLink("nope")).toBeNull();
+    });
+  });
+
+  describe("buildLinkResolver", () => {
+    let nestedStore: CardStore;
+
+    beforeEach(async () => {
+      nestedStore = new CardStore(cardsDir, archiveDir, true);
+    });
+
+    it("resolves exact and basename links synchronously", async () => {
+      await mkdir(join(cardsDir, "projects"), { recursive: true });
+      await writeFile(join(cardsDir, "root.md"), "content");
+      await writeFile(join(cardsDir, "projects", "deep.md"), "content");
+
+      const cards = await nestedStore.scanAll();
+      const resolve = nestedStore.buildLinkResolver(cards);
+
+      expect(resolve("root")).toBe("root");
+      expect(resolve("projects/deep")).toBe("projects/deep");
+      expect(resolve("deep")).toBe("projects/deep");
+      expect(resolve("missing")).toBeNull();
+    });
+
+    it("returns null for ambiguous basename in resolver", async () => {
+      await mkdir(join(cardsDir, "a"), { recursive: true });
+      await mkdir(join(cardsDir, "b"), { recursive: true });
+      await writeFile(join(cardsDir, "a", "same.md"), "content");
+      await writeFile(join(cardsDir, "b", "same.md"), "content");
+
+      const cards = await nestedStore.scanAll();
+      const resolve = nestedStore.buildLinkResolver(cards);
+
+      expect(resolve("same")).toBeNull();
+      expect(resolve("a/same")).toBe("a/same");
+      expect(resolve("b/same")).toBe("b/same");
+    });
+  });
 });

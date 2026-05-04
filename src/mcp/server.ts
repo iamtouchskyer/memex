@@ -6,16 +6,32 @@ import { writeCommand } from "../commands/write.js";
 import { linksCommand } from "../commands/links.js";
 import { archiveCommand } from "../commands/archive.js";
 import { parseFrontmatter, stringifyFrontmatter } from "../lib/parser.js";
+import { readConfig } from "../lib/config.js";
 import { HookRegistry } from "../lib/hooks.js";
 import { autoFetch, autoSync } from "../lib/sync.js";
 import { registerOperations } from "./operations.js";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const pkg = JSON.parse(readFileSync(join(__dirname, "..", "..", "package.json"), "utf-8"));
+const pkg = readPackageJson(__dirname);
+
+function readPackageJson(startDir: string): { version: string } {
+  let dir = startDir;
+  for (let depth = 0; depth < 6; depth++) {
+    const path = join(dir, "package.json");
+    if (existsSync(path)) {
+      const pkg = JSON.parse(readFileSync(path, "utf-8"));
+      if (pkg.name === "@touchskyer/memex") return pkg;
+    }
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return { version: "0.0.0" };
+}
 
 export function createMemexServer(store: CardStore, home?: string): McpServer {
   const server = new McpServer({
@@ -44,9 +60,11 @@ export function createMemexServer(store: CardStore, home?: string): McpServer {
     inputSchema: z.object({
       query: z.string().optional().describe("Search keyword. Omit to list all cards."),
       limit: z.number().optional().describe("Max results (default 10)"),
+      semantic: z.boolean().optional().describe("Use embedding-based semantic search"),
     }),
-  }, async ({ query, limit }) => {
-    const result = await searchCommand(store, query, { limit });
+  }, async ({ query, limit, semantic }) => {
+    const config = home ? await readConfig(home) : undefined;
+    const result = await searchCommand(store, query, { limit, semantic, config, memexHome: home });
     return { content: [{ type: "text" as const, text: result.output || "No cards found." }] };
   });
 

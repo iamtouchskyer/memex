@@ -1,7 +1,8 @@
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rename } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { execFile as execFileCb } from "node:child_process";
 import { promisify } from "node:util";
+import { randomBytes } from "node:crypto";
 
 const execFile = promisify(execFileCb);
 
@@ -28,7 +29,7 @@ export interface SyncStatus {
 }
 
 export interface SyncAdapter {
-  init(remote?: string): Promise<void>;
+  init(remote?: string): Promise<string>;
   pull(): Promise<SyncResult>;
   push(): Promise<SyncResult>;
   sync(): Promise<SyncResult>;
@@ -53,11 +54,10 @@ export async function writeSyncConfig(
   config: SyncConfig
 ): Promise<void> {
   await mkdir(home, { recursive: true });
-  await writeFile(
-    join(home, CONFIG_FILE),
-    JSON.stringify(config, null, 2),
-    "utf-8"
-  );
+  const target = join(home, CONFIG_FILE);
+  const tmp = target + "." + randomBytes(4).toString("hex") + ".tmp";
+  await writeFile(tmp, JSON.stringify(config, null, 2), "utf-8");
+  await rename(tmp, target); // atomic on POSIX
 }
 
 // ---- Git helpers ----
@@ -105,12 +105,22 @@ async function detectRemoteBranch(home: string): Promise<string> {
 export class GitAdapter implements SyncAdapter {
   constructor(private home: string) {}
 
-  async init(remote?: string): Promise<void> {
+  async init(remote?: string): Promise<string> {
     if (!(await gitAvailable())) {
       throw new Error("git is required for sync. Install git first.");
     }
 
     let url = remote;
+
+    // Allowlist URL validation: must match a known git remote pattern
+    if (url) {
+      const isSchemeUrl = /^[a-z][a-z0-9+.-]*:\/\//i.test(url);  // https://, ssh://, git://
+      const isSshUrl = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+:/.test(url);  // git@host:user/repo
+      const isAbsolutePath = url.startsWith("/") || /^[A-Za-z]:[\\\/]/.test(url);  // /path/to/bare-repo or C:\path
+      if (!isSchemeUrl && !isSshUrl && !isAbsolutePath) {
+        throw new Error(`Invalid remote URL: "${url}". Expected a git URL (e.g. git@github.com:user/repo.git or https://github.com/user/repo.git) or an absolute path.`);
+      }
+    }
 
     if (!url) {
       if (!(await ghAvailable())) {
@@ -127,9 +137,18 @@ export class GitAdapter implements SyncAdapter {
         );
       }
       // Try to reuse existing repo first, create only if it doesn't exist
+      let ghUser: string;
+      try {
+        const { stdout: userOut } = await execFile("gh", [
+          "api", "user", "-q", ".login",
+        ]);
+        ghUser = userOut.trim();
+      } catch {
+        throw new Error("Cannot determine GitHub username. Ensure `gh auth login` is complete.");
+      }
       try {
         const { stdout } = await execFile("gh", [
-          "repo", "view", "memex-cards", "--json", "url", "-q", ".url",
+          "repo", "view", `${ghUser}/memex-cards`, "--json", "url", "-q", ".url",
         ]);
         url = stdout.trim();
       } catch {
@@ -144,12 +163,20 @@ export class GitAdapter implements SyncAdapter {
       }
     }
 
+    // Ensure cards/ exists. `git add cards` below would otherwise fail with
+    // "pathspec 'cards' did not match any files" on a fresh install where no
+    // card has ever been written, aborting the whole init.
+    await mkdir(join(this.home, "cards"), { recursive: true });
+
     // Init git repo if not already
     try {
       await execFile("git", ["-C", this.home, "rev-parse", "--git-dir"]);
     } catch {
       await execFile("git", ["init", this.home]);
     }
+
+    // Prevent CRLF issues on Windows
+    await execFile("git", ["-C", this.home, "config", "core.autocrlf", "false"]);
 
     // Ensure .gitignore exists with local-only files
     const gitignorePath = join(this.home, ".gitignore");
@@ -182,8 +209,39 @@ export class GitAdapter implements SyncAdapter {
       }
     }
 
+    // Pre-align local branch to match remote default branch BEFORE first commit.
+    // This prevents the initial commit from landing on the wrong branch
+    // (e.g. master vs main) when git init.defaultBranch differs from the remote.
+    let targetBranch = "main"; // fallback
+    try {
+      const { stdout } = await execFile("git", [
+        "-C", this.home, "ls-remote", "--symref", "origin", "HEAD",
+      ]);
+      const match = stdout.match(/ref: refs\/heads\/(\S+)\s/);
+      if (match) {
+        targetBranch = match[1];
+      }
+    } catch {
+      // ls-remote failed (empty remote or offline) — use fallback
+    }
+
+    // Set HEAD to target branch before any commits exist.
+    // This ensures the first commit lands on the correct branch name
+    // regardless of the local git init.defaultBranch setting.
+    try {
+      await execFile("git", [
+        "-C", this.home, "symbolic-ref", "HEAD", `refs/heads/${targetBranch}`,
+      ]);
+    } catch {
+      // symbolic-ref failed — will try normalizeBranch after commit
+    }
+
     // Commit local content first
-    await execFile("git", ["-C", this.home, "add", "-A"]);
+    // Stage .gitignore so there's always at least one file to commit
+    // (cards/ and archive/ may be empty dirs, which git can't track).
+    await execFile("git", ["-C", this.home, "add", ".gitignore"]);
+    try { await execFile("git", ["-C", this.home, "add", "cards"]); } catch { /* empty or missing */ }
+    try { await execFile("git", ["-C", this.home, "add", "archive"]); } catch { /* empty or missing */ }
     try {
       await execFile("git", [
         "-C",
@@ -197,21 +255,46 @@ export class GitAdapter implements SyncAdapter {
     }
 
     // Fetch remote — if it has existing commits, merge them before pushing
+    let fetched = false;
     try {
       await execFile("git", ["-C", this.home, "fetch", "origin"]);
+      fetched = true;
+    } catch {
+      // Fetch failed (offline / empty remote) — push will handle it
+    }
+
+    if (fetched) {
+      // Safety net: normalize branch name after commit in case symbolic-ref
+      // didn't take effect (e.g. repo already had commits on wrong branch).
+      await this.normalizeBranch();
+
       // Check if remote has any commits
       try {
         const remoteBranch = await detectRemoteBranch(this.home);
-        // Remote has commits — merge with allow-unrelated-histories
+        // Verify the remote branch actually exists (detectRemoteBranch may
+        // return a fallback like origin/main even for empty remotes).
         await execFile("git", [
-          "-C", this.home, "merge", remoteBranch,
-          "--allow-unrelated-histories", "--no-edit",
+          "-C", this.home, "rev-parse", "--verify", remoteBranch,
         ]);
-      } catch {
+        // Remote has commits — merge with allow-unrelated-histories
+        try {
+          await execFile("git", [
+            "-C", this.home, "merge", remoteBranch,
+            "--allow-unrelated-histories", "--no-edit",
+          ]);
+        } catch (mergeErr) {
+          // Merge conflict — abort and surface to user
+          try { await execFile("git", ["-C", this.home, "merge", "--abort"]); } catch { /* ignore */ }
+          throw new Error(
+            `Merge conflict during init. Your local cards conflict with remote.\n` +
+            `Run: cd ${this.home} && git fetch origin && git merge origin/main --allow-unrelated-histories\n` +
+            `Then resolve conflicts and run \`memex sync --init\` again.`
+          );
+        }
+      } catch (err) {
+        if ((err as Error).message?.includes("Merge conflict")) throw err;
         // No remote branch yet — fresh repo, push will create it
       }
-    } catch {
-      // Fetch failed (offline / empty remote) — push will handle it
     }
 
     await execFile("git", ["-C", this.home, "push", "-u", "origin", "HEAD"]);
@@ -221,6 +304,43 @@ export class GitAdapter implements SyncAdapter {
       adapter: "git",
       auto: false,
     });
+
+    return url;
+  }
+
+  /**
+   * Rename the local branch to match the remote's default branch,
+   * or fall back to "main" if the remote is empty.
+   */
+  private async normalizeBranch(): Promise<void> {
+    let target = "main"; // fallback for empty remotes
+
+    // Detect remote's default branch via ls-remote --symref
+    try {
+      const { stdout } = await execFile("git", [
+        "-C", this.home, "ls-remote", "--symref", "origin", "HEAD",
+      ]);
+      // Parses: "ref: refs/heads/<branch>\tHEAD"
+      const match = stdout.match(/ref: refs\/heads\/(\S+)\s/);
+      if (match) {
+        target = match[1];
+      }
+    } catch {
+      // ls-remote failed (empty remote or offline) — use fallback
+    }
+
+    // Get current local branch name
+    try {
+      const { stdout } = await execFile("git", [
+        "-C", this.home, "rev-parse", "--abbrev-ref", "HEAD",
+      ]);
+      const current = stdout.trim();
+      if (current && current !== target) {
+        await execFile("git", ["-C", this.home, "branch", "-M", target]);
+      }
+    } catch {
+      // No commits yet or detached HEAD — branch -M will work after first commit
+    }
   }
 
   async pull(): Promise<SyncResult> {
@@ -237,6 +357,15 @@ export class GitAdapter implements SyncAdapter {
       const remoteBranch = await detectRemoteBranch(this.home);
       await execFile("git", ["-C", this.home, "merge", remoteBranch, "--no-edit"]);
     } catch {
+      // Merge conflict — auto-resolve: keep ours, save theirs as conflict copies
+      const resolved = await this.autoResolveConflicts();
+      if (resolved.length > 0) {
+        return {
+          success: true,
+          message: `Pulled with conflicts auto-resolved. ${resolved.length} conflict file(s) saved: ${resolved.join(", ")}`,
+        };
+      }
+      // If auto-resolve failed (non-card conflicts or unexpected state), abort
       try { await execFile("git", ["-C", this.home, "merge", "--abort"]); } catch { /* ignore */ }
       return {
         success: false,
@@ -246,12 +375,77 @@ export class GitAdapter implements SyncAdapter {
     return { success: true, message: "Pulled latest." };
   }
 
+  /**
+   * Auto-resolve merge conflicts by keeping local (ours) and saving remote (theirs)
+   * as <slug>-conflict-<timestamp>.md. Returns list of conflict copy filenames.
+   * If any file cannot be resolved, aborts and returns empty array.
+   */
+  private async autoResolveConflicts(): Promise<string[]> {
+    // List conflicted files
+    let conflictFiles: string[];
+    try {
+      const { stdout } = await execFile("git", [
+        "-C", this.home, "diff", "--name-only", "--diff-filter=U",
+      ]);
+      conflictFiles = stdout.trim().split("\n").filter(Boolean);
+    } catch {
+      return [];
+    }
+    if (conflictFiles.length === 0) return [];
+
+    const timestamp = new Date().toISOString().slice(0, 19).replace(/[T:]/g, "-");
+    const conflictCopies: string[] = [];
+
+    for (const relPath of conflictFiles) {
+      // Only auto-resolve .md files in cards/ or archive/
+      if (!relPath.endsWith(".md") || !(relPath.startsWith("cards/") || relPath.startsWith("archive/"))) {
+        return []; // Non-card conflict — bail out, let user handle
+      }
+
+      // Save theirs version as conflict copy
+      try {
+        const { stdout: theirsContent } = await execFile("git", [
+          "-C", this.home, "show", `:3:${relPath}`,
+        ]);
+        const conflictName = relPath.replace(/\.md$/, `-conflict-${timestamp}.md`);
+        const conflictPath = join(this.home, conflictName);
+        await mkdir(dirname(conflictPath), { recursive: true });
+        await writeFile(conflictPath, theirsContent, "utf-8");
+        conflictCopies.push(conflictName);
+      } catch {
+        // :3: (theirs) doesn't exist = deleted on remote side, just keep ours
+      }
+
+      // Checkout ours for the conflicted file
+      try {
+        await execFile("git", ["-C", this.home, "checkout", "--ours", relPath]);
+        await execFile("git", ["-C", this.home, "add", relPath]);
+      } catch {
+        return []; // Can't resolve — bail
+      }
+    }
+
+    // Stage conflict copies and commit
+    try {
+      for (const copy of conflictCopies) {
+        await execFile("git", ["-C", this.home, "add", copy]);
+      }
+      await execFile("git", ["-C", this.home, "commit", "--no-edit"]);
+    } catch {
+      return []; // Commit failed — bail
+    }
+
+    return conflictCopies;
+  }
+
   async push(): Promise<SyncResult> {
     const config = await readSyncConfig(this.home);
     if (!config.remote) {
       return { success: false, message: "Not configured." };
     }
-    await execFile("git", ["-C", this.home, "add", "-A"]);
+    // Scope add to cards/ and archive/ only (don't stage unrelated files in ~/.memex)
+    try { await execFile("git", ["-C", this.home, "add", "cards"]); } catch { /* empty or missing */ }
+    try { await execFile("git", ["-C", this.home, "add", "archive"]); } catch { /* empty or missing */ }
     try {
       const ts = new Date().toISOString();
       await execFile("git", ["-C", this.home, "commit", "-m", `memex sync ${ts}`]);

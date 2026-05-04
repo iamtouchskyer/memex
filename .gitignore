@@ -1,5 +1,4 @@
 node_modules/
-dist/
 .mcpregistry_github_token
 .mcpregistry_registry_token
 .claude/

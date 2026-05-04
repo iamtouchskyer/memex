@@ -1,16 +1,53 @@
 import { createServer, type Server } from "node:http";
 import { join } from "node:path";
-import { homedir } from "node:os";
-import { readFile } from "node:fs/promises";
+import { readFile, access } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 import { execFile } from "node:child_process";
 import { CardStore } from "../lib/store.js";
 import { parseFrontmatter, extractLinks } from "../lib/parser.js";
 import { readSyncConfig } from "../lib/sync.js";
+import { resolveMemexHome } from "../lib/config.js";
+
+function toDateString(val: unknown): string {
+  if (!val) return "";
+  if (val instanceof Date) return val.toISOString().slice(0, 10);
+  const s = String(val);
+  // If gray-matter already stringified a Date, extract YYYY-MM-DD
+  const m = s.match(/^\d{4}-\d{2}-\d{2}/);
+  return m ? m[0] : s;
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+// Asset resolution works in two layouts:
+//   - source / vitest:   __dirname = src/commands  → serve-ui.html sits next to this file,
+//                        share-card.js at ../share-card/share-card.js
+//   - bundled dist/cli.js: __dirname = dist        → postbuild copies assets to
+//                        dist/commands/serve-ui.html and dist/share-card/share-card.js
+async function resolveAsset(name: string, ...candidates: string[]): Promise<string> {
+  for (const p of candidates) {
+    try {
+      await access(p);
+      return p;
+    } catch {}
+  }
+  throw new Error(
+    `Could not locate asset '${name}'. Tried:\n  ${candidates.join("\n  ")}`
+  );
+}
+
+const SERVE_UI_HTML = resolveAsset(
+  "serve-ui.html",
+  join(__dirname, "serve-ui.html"),
+  join(__dirname, "commands", "serve-ui.html")
+);
+const SHARE_CARD_JS = resolveAsset(
+  "share-card.js",
+  join(__dirname, "..", "share-card", "share-card.js"),
+  join(__dirname, "share-card", "share-card.js")
+);
 
 const MEMRA_URL = "https://memra.vercel.app";
 
@@ -19,7 +56,7 @@ let cachedHTMLWithBanner: string | null = null;
 
 async function getHTML(withBanner: boolean): Promise<string> {
   if (!cachedHTML) {
-    cachedHTML = await readFile(join(__dirname, "serve-ui.html"), "utf-8");
+    cachedHTML = await readFile(await SERVE_UI_HTML, "utf-8");
     cachedHTMLWithBanner = injectBanner(cachedHTML);
   }
   return withBanner ? cachedHTMLWithBanner! : cachedHTML;
@@ -45,24 +82,30 @@ function injectBanner(html: string): string {
   return html.replace("<body>", "<body>" + banner);
 }
 
-export async function serveCommand(port: number): Promise<Server | null> {
-  const home = process.env.MEMEX_HOME || join(homedir(), ".memex");
+export async function serveCommand(
+  port: number,
+  opts: { local?: boolean } = {}
+): Promise<Server | null> {
+  const home = await resolveMemexHome();
 
-  // Check if synced to GitHub → redirect to online
+  // Check if synced to GitHub → redirect to online (unless --local was passed).
   const syncConfig = await readSyncConfig(home);
-  if (syncConfig.remote) {
+  if (syncConfig.remote && !opts.local) {
     console.log(`Cards synced to ${syncConfig.remote}`);
     console.log(`Opening ${MEMRA_URL}...`);
     if (!process.env.MEMEX_NO_OPEN) {
       const bin = process.platform === "darwin" ? "open"
         : process.platform === "win32" ? "start"
         : "xdg-open";
-      execFile(bin, [MEMRA_URL], () => {});
+      execFile(bin, [MEMRA_URL], { shell: process.platform === "win32" }, () => {});
     }
     return null;
   }
 
-  // No sync — serve locally with banner
+  // Local mode (either no sync configured, or --local was passed).
+  // Suppress the "set up sync" banner when sync is already configured —
+  // there is nothing to advertise.
+  const showBanner = !syncConfig.remote;
   const store = new CardStore(join(home, "cards"), join(home, "archive"));
 
   const server = createServer(async (req, res) => {
@@ -80,8 +123,8 @@ export async function serveCommand(port: number): Promise<Server | null> {
             return {
               slug: c.slug,
               title: String(data.title || c.slug),
-              created: String(data.created || ""),
-              modified: String(data.modified || ""),
+              created: toDateString(data.created),
+              modified: toDateString(data.modified),
               source: String(data.source || ""),
               category: String(data.category || ""),
               firstLine,
@@ -155,8 +198,8 @@ export async function serveCommand(port: number): Promise<Server | null> {
             results.push({
               slug: c.slug,
               title,
-              created: String(data.created || ""),
-              modified: String(data.modified || ""),
+              created: toDateString(data.created),
+              modified: toDateString(data.modified),
               source: String(data.source || ""),
               firstLine,
               links,
@@ -170,7 +213,7 @@ export async function serveCommand(port: number): Promise<Server | null> {
       }
 
       if (url.pathname === "/share-card.js") {
-        const js = await readFile(join(__dirname, "..", "share-card", "share-card.js"), "utf-8");
+        const js = await readFile(await SHARE_CARD_JS, "utf-8");
         const stripped = js.replace(/^export /gm, "");
         const wrapped = `(function(){\n${stripped}\nwindow.createShareCard = createShareCard;\n})();`;
         res.writeHead(200, { "Content-Type": "application/javascript; charset=utf-8" });
@@ -179,7 +222,7 @@ export async function serveCommand(port: number): Promise<Server | null> {
       }
 
       if (url.pathname === "/" || url.pathname === "/index.html") {
-        const html = await getHTML(true);
+        const html = await getHTML(showBanner);
         res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
         res.end(html);
         return;
@@ -208,15 +251,17 @@ export async function serveCommand(port: number): Promise<Server | null> {
         }
       });
 
-      server.listen(currentPort, () => {
+      server.listen(currentPort, '127.0.0.1', () => {
         const url = `http://localhost:${currentPort}`;
         console.log(`memex is running at ${url}`);
-        console.log("💡 Tip: Run 'memex sync --init' to sync and access your cards online");
+        if (showBanner) {
+          console.log("💡 Tip: Run 'memex sync --init' to sync and access your cards online");
+        }
         if (!process.env.MEMEX_NO_OPEN) {
           const bin = process.platform === "darwin" ? "open"
             : process.platform === "win32" ? "start"
             : "xdg-open";
-          execFile(bin, [url], () => {});
+          execFile(bin, [url], { shell: process.platform === "win32" }, () => {});
         }
         resolvePromise(server);
       });

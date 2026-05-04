@@ -1,18 +1,26 @@
 {
   "name": "@touchskyer/memex",
   "mcpName": "io.github.iamtouchskyer/memex",
-  "version": "0.1.22",
+  "version": "0.1.32",
   "description": "Zettelkasten-based agent memory system with bidirectional links",
   "type": "module",
   "bin": {
     "memex": "dist/cli.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "hooks",
+    "pi-extension",
+    "skills",
+    "docs",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "GEMINI.md"
   ],
   "scripts": {
-    "build": "tsc",
-    "postbuild": "cp src/commands/serve-ui.html dist/commands/ && cp -r src/share-card dist/",
+    "prepare": "node -e \"const fs=require('fs'),p=require('path');if(fs.existsSync('.git')){fs.mkdirSync(p.join('.git','hooks'),{recursive:true});fs.copyFileSync(p.join('scripts','pre-commit'),p.join('.git','hooks','pre-commit'));if(process.platform!=='win32')fs.chmodSync(p.join('.git','hooks','pre-commit'),0o755)}\" || true",
+    "build": "node scripts/bundle.mjs",
+    "postbuild": "node scripts/postbuild.mjs",
     "prepublishOnly": "npm run build",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -22,8 +30,14 @@
     "zettelkasten",
     "agent",
     "cli",
-    "knowledge-management"
+    "knowledge-management",
+    "pi-package"
   ],
+  "pi": {
+    "extensions": [
+      "pi-extension/index.ts"
+    ]
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -37,9 +51,13 @@
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
+    "esbuild": "^0.27.7",
     "happy-dom": "^20.8.4",
     "marked": "^17.0.5",
     "typescript": "^5.9.3",
     "vitest": "^4.1.0"
+  },
+  "optionalDependencies": {
+    "node-llama-cpp": "^3.18.1"
   }
 }

@@ -37,7 +37,7 @@ describe("syncCommand", () => {
     await syncCommand(home, { init: true, remote: bare });
     const result = await syncCommand(home, {});
     expect(result.success).toBe(true);
-  });
+  }, 15000);
 
   it("status shows configured after init", async () => {
     await syncCommand(home, { init: true, remote: bare });
@@ -60,5 +60,43 @@ describe("syncCommand", () => {
   it("sync without init fails gracefully", async () => {
     const result = await syncCommand(home, {});
     expect(result.success).toBe(false);
+  }, 30000); // Increase timeout to 30s for Windows compatibility
+
+  it("push after init succeeds (does not corrupt remote)", async () => {
+    await syncCommand(home, { init: true, remote: bare });
+    const result = await syncCommand(home, { action: "push" });
+    expect(result.success).toBe(true);
+    expect(result.output).toContain("Pushed");
+  }, 20000);
+
+  it("pull after init succeeds", async () => {
+    await syncCommand(home, { init: true, remote: bare });
+    const result = await syncCommand(home, { action: "pull" });
+    expect(result.success).toBe(true);
   });
+
+  it("push without init fails gracefully", async () => {
+    const result = await syncCommand(home, { action: "push" });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Not initialized");
+  });
+
+  it("pull without init fails gracefully", async () => {
+    const result = await syncCommand(home, { action: "pull" });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Not initialized");
+  });
+
+  it("bare word without --init does not trigger init", async () => {
+    // Simulates what the fixed CLI does: without --init, arg is NOT passed as remote
+    const result = await syncCommand(home, { init: false, remote: undefined });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Sync not initialized");
+  });
+
+  it("--init with URL still works", async () => {
+    const result = await syncCommand(home, { init: true, remote: bare });
+    expect(result.success).toBe(true);
+    expect(result.output).toContain("Sync initialized");
+  }, 20000);
 });

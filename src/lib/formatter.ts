@@ -52,6 +52,11 @@ export function formatLinkStats(stats: LinkStatsItem[]): string {
   return [header, ...rows].join("\n");
 }
 
+export function formatCompactSearchResult(result: SearchResultItem, score?: number): string {
+  const scorePart = score !== undefined ? `  [${score.toFixed(2)}]` : "";
+  return `${result.slug}  ${result.title}${scorePart}`;
+}
+
 export function formatCardLinks(slug: string, outbound: string[], inbound: string[]): string {
   const lines: string[] = [];
   lines.push(`## ${slug}`);

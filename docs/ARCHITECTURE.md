@@ -5,7 +5,7 @@
 
 ## 1. Project Overview
 
-**Memex** (`@touchskyer/memex`) is a persistent Zettelkasten memory system for AI coding agents. It stores atomic knowledge cards as markdown files in `~/.memex/cards/`, using `[[wikilinks]]` for bidirectional linking. No vector database, no embeddings required (optional).
+**Memex** (`@touchskyer/memex`, v0.1.26) is a persistent Zettelkasten memory system for AI coding agents. It stores atomic knowledge cards as markdown files in `~/.memex/cards/`, using `[[wikilinks]]` for bidirectional linking. No vector database, no embeddings required (optional).
 
 **Core philosophy**: Recall → Work → Retro. Every session starts by recalling prior knowledge, ends by saving new insights.
 

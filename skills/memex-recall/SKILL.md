@@ -1,6 +1,7 @@
 ---
 name: memex-recall
-description: Retrieve relevant memories from the Zettelkasten before starting a task. Use at the beginning of any task that might benefit from prior knowledge.
+description: Load prior knowledge from Zettelkasten memory before starting any task.
+whenToUse: At the START of every new conversation or task, BEFORE doing any work. This skill loads prior knowledge from the Zettelkasten memory system. Without it, you have no memory of past sessions. Invoke proactively — do not wait for the user to ask.
 ---
 
 # Memory Recall
@@ -9,16 +10,24 @@ You have access to a Zettelkasten memory system via the `memex` CLI. Before star
 
 ## Tools Available
 
-Two equivalent interfaces exist — use whichever your environment supports:
+Three equivalent interfaces — use whichever your environment supports:
 
-| CLI (Claude Code with memex in PATH) | MCP tool (VSCode / Cursor / any MCP client) |
-|---------------------------------------|----------------------------------------------|
-| `memex read index`                    | `memex_read` with slug `index`               |
-| `memex search <query>`               | `memex_search` with query arg                |
-| `memex read <slug>`                   | `memex_read` with slug arg                   |
-| `memex search` (no args)             | `memex_search` with no args                  |
+| CLI (memex in PATH) | Plugin CLI fallback (Claude Code) | MCP tool (VSCode / Cursor) |
+|----------------------|-----------------------------------|----------------------------|
+| `memex read index`   | `node ~/.claude/plugins/cache/cc-plugins/memex/*/dist/cli.js read index` | `memex_read` with slug `index` |
+| `memex search <q>`   | `node ~/.claude/plugins/cache/cc-plugins/memex/*/dist/cli.js search <q>` | `memex_search` with query arg |
+| `memex read <slug>`  | `node ~/.claude/plugins/cache/cc-plugins/memex/*/dist/cli.js read <slug>` | `memex_read` with slug arg |
+| `memex search` (no args) | `node ~/.claude/plugins/cache/cc-plugins/memex/*/dist/cli.js search` | `memex_search` with no args |
 
-The rest of this skill uses CLI syntax for brevity. Substitute MCP tool calls if CLI is unavailable.
+**Resolution order:** Try `memex` in PATH first. If not found, define a shell function and use it:
+
+```bash
+memex() { node $HOME/.claude/plugins/cache/cc-plugins/memex/*/dist/cli.js "$@"; }
+```
+
+If both CLI approaches fail, use MCP tools.
+
+The rest of this skill uses `memex` CLI syntax for brevity.
 
 ## Process
 

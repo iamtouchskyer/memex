@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Pre-commit hook: verify all agent instruction files are in sync with AGENTS.md
+# Install: cp scripts/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+
+AGENTS="AGENTS.md"
+TARGETS=("CLAUDE.md" "GEMINI.md" ".cursorrules" ".windsurfrules")
+
+if [ ! -f "$AGENTS" ]; then
+  exit 0  # not in repo root, skip
+fi
+
+for target in "${TARGETS[@]}"; do
+  if [ ! -f "$target" ]; then
+    echo "ERROR: $target is missing. Run: npm run build"
+    exit 1
+  fi
+  if ! diff -q "$AGENTS" "$target" > /dev/null 2>&1; then
+    echo "ERROR: $target has drifted from AGENTS.md."
+    echo "Fix: cp AGENTS.md $target"
+    echo "Or run: npm run build"
+    exit 1
+  fi
+done

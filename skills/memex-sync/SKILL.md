@@ -1,6 +1,7 @@
 ---
 name: memex-sync
-description: Sync Zettelkasten cards across devices via git. Initialize, push/pull, or configure auto-sync.
+description: Sync Zettelkasten cards across devices via git.
+whenToUse: When the user asks to sync, backup, or share their memory cards across devices. Handles git-based push/pull and initial setup of sync remotes.
 ---
 
 # Memory Sync
