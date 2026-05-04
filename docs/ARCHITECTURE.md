@@ -84,7 +84,9 @@ skills/                       # Claude Code skills (bundled in plugin)
 ├── memex-retro/SKILL.md
 ├── memex-organize/SKILL.md
 ├── memex-sync/SKILL.md
-└── memex-best-practices/SKILL.md
+├── memex-best-practices/SKILL.md
+├── memex-agentic-memory/SKILL.md  # Experimental (requires agenticMemory flag)
+└── agent-prompts-warmup/SKILL.md  # FRE audit and agent instruction sync
 hooks/
 └── hooks.json                # Claude Code SessionStart hook
 .claude-plugin/
@@ -231,7 +233,7 @@ post:organize → autoSync
 ### Claude Code Plugin
 
 - **SessionStart hook** (`hooks/hooks.json`): checks CLI install, runs sync, injects recall/retro reminders
-- **5 skills**: recall, retro, organize, sync, best-practices
+- **7 skills**: recall, retro, organize, sync, best-practices, agentic-memory (experimental), agent-prompts-warmup
 - **Install**: `/plugin install memex@memex`
 - **Marketplace**: `.claude-plugin/marketplace.json`
 
@@ -306,6 +308,27 @@ npm run test:watch    # vitest watch mode
 | `ollamaModel` | string | `nomic-embed-text` | |
 | `ollamaBaseUrl` | string | `http://localhost:11434` | |
 | `localModelPath` | string | HuggingFace URI | |
+| `experimental` | object | — | Experimental feature flags (see below) |
+
+#### Experimental Flags
+
+The `experimental` field is an optional object for gating features that are not yet stable.
+
+| Flag | Type | Default | Notes |
+|------|------|---------|-------|
+| `agenticMemory` | boolean | `false` | Enables the A-MEM-inspired agentic memory skill workflow. Only `true` activates; `false`, `null`, missing, or non-boolean values are treated as disabled. |
+
+Example `.memexrc` with experimental flags:
+
+```json
+{
+  "experimental": {
+    "agenticMemory": true
+  }
+}
+```
+
+When `agenticMemory` is enabled, agents may use the `memex-agentic-memory` skill for structured knowledge capture (observe → draft → enrich → retrieve → decide → preview → write → verify). When disabled, agents use the standard `memex-retro` workflow. See `skills/memex-agentic-memory/SKILL.md` for the full skill specification.
 
 ### Environment Variables
 

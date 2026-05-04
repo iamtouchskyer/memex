@@ -164,4 +164,71 @@ describe("readConfig", () => {
     expect(config.azureOpenaiEndpoint).toBe("https://example.openai.azure.com/openai/v1/");
     expect(config.azureOpenaiApiKeyPath).toBe("~/.azure_api_key");
   });
+
+  // --- experimental.agenticMemory config ---
+
+  it("reads experimental.agenticMemory: true", async () => {
+    await writeFile(join(tmpDir, ".memexrc"), JSON.stringify({ experimental: { agenticMemory: true } }));
+    const config = await readConfig(tmpDir);
+    expect(config.experimental).toEqual({ agenticMemory: true });
+  });
+
+  it("treats experimental.agenticMemory: false as disabled", async () => {
+    await writeFile(join(tmpDir, ".memexrc"), JSON.stringify({ experimental: { agenticMemory: false } }));
+    const config = await readConfig(tmpDir);
+    expect(config.experimental).toBeUndefined();
+  });
+
+  it("treats missing experimental as undefined", async () => {
+    await writeFile(join(tmpDir, ".memexrc"), JSON.stringify({ nestedSlugs: false }));
+    const config = await readConfig(tmpDir);
+    expect(config.experimental).toBeUndefined();
+  });
+
+  it("treats experimental: null as undefined", async () => {
+    await writeFile(join(tmpDir, ".memexrc"), JSON.stringify({ experimental: null }));
+    const config = await readConfig(tmpDir);
+    expect(config.experimental).toBeUndefined();
+  });
+
+  it("treats experimental: string as undefined", async () => {
+    await writeFile(join(tmpDir, ".memexrc"), JSON.stringify({ experimental: "yes" }));
+    const config = await readConfig(tmpDir);
+    expect(config.experimental).toBeUndefined();
+  });
+
+  it("treats experimental.agenticMemory: string as disabled", async () => {
+    await writeFile(join(tmpDir, ".memexrc"), JSON.stringify({ experimental: { agenticMemory: "true" } }));
+    const config = await readConfig(tmpDir);
+    expect(config.experimental).toBeUndefined();
+  });
+
+  it("treats experimental.agenticMemory: 1 as disabled", async () => {
+    await writeFile(join(tmpDir, ".memexrc"), JSON.stringify({ experimental: { agenticMemory: 1 } }));
+    const config = await readConfig(tmpDir);
+    expect(config.experimental).toBeUndefined();
+  });
+
+  it("treats experimental: {} (empty object) as undefined", async () => {
+    await writeFile(join(tmpDir, ".memexrc"), JSON.stringify({ experimental: {} }));
+    const config = await readConfig(tmpDir);
+    expect(config.experimental).toBeUndefined();
+  });
+
+  it("treats experimental.agenticMemory: null as disabled", async () => {
+    await writeFile(join(tmpDir, ".memexrc"), JSON.stringify({ experimental: { agenticMemory: null } }));
+    const config = await readConfig(tmpDir);
+    expect(config.experimental).toBeUndefined();
+  });
+
+  it("preserves existing config fields alongside experimental", async () => {
+    await writeFile(
+      join(tmpDir, ".memexrc"),
+      JSON.stringify({ nestedSlugs: true, embeddingProvider: "openai", experimental: { agenticMemory: true } })
+    );
+    const config = await readConfig(tmpDir);
+    expect(config.nestedSlugs).toBe(true);
+    expect(config.embeddingProvider).toBe("openai");
+    expect(config.experimental).toEqual({ agenticMemory: true });
+  });
 });

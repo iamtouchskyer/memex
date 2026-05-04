@@ -25,6 +25,11 @@ export interface MemexConfig {
   localModelPath?: string;
   /** Extra directories (relative to MEMEX_HOME) whose .md files count as valid link targets in doctor. */
   extraLinkDirs?: string[];
+  /** Experimental feature flags. */
+  experimental?: {
+    /** Enable A-MEM-inspired agentic memory skill workflow. Default: false. */
+    agenticMemory?: boolean;
+  };
 }
 
 /**
@@ -52,6 +57,7 @@ export async function readConfig(memexHome: string): Promise<MemexConfig> {
       ollamaBaseUrl: typeof parsed.ollamaBaseUrl === "string" ? parsed.ollamaBaseUrl : undefined,
       localModelPath: typeof parsed.localModelPath === "string" ? parsed.localModelPath : undefined,
       extraLinkDirs: Array.isArray(parsed.extraLinkDirs) ? parsed.extraLinkDirs : undefined,
+      experimental: parseExperimental(parsed.experimental),
     };
   } catch {
     // File doesn't exist or invalid JSON - return defaults
@@ -63,6 +69,18 @@ export async function readConfig(memexHome: string): Promise<MemexConfig> {
 
 function isValidProvider(value: unknown): value is EmbeddingProviderType {
   return value === "openai" || value === "azure" || value === "local" || value === "ollama";
+}
+
+function parseExperimental(value: unknown): MemexConfig["experimental"] {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+  const obj = value as Record<string, unknown>;
+  const agenticMemory = obj.agenticMemory === true ? true : undefined;
+  if (agenticMemory === undefined) {
+    return undefined;
+  }
+  return { agenticMemory };
 }
 
 /**
