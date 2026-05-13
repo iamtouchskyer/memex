@@ -15,6 +15,7 @@ interface OrganizeResult {
 export async function organizeCommand(
   store: CardStore,
   lastOrganize: string | null,
+  json?: boolean,
 ): Promise<OrganizeResult> {
   const cards = await store.scanAll();
   if (cards.length === 0) return { output: "No cards yet.", exitCode: 0 };
@@ -107,8 +108,9 @@ export async function organizeCommand(
     }
   }
 
+  // Build recent pairs data
+  const recentPairs: { slug1: string; slug2: string; title1: string; title2: string }[] = [];
   if (recentCards.length > 0) {
-    const pairSections: string[] = [];
     const seen = new Set<string>();
 
     for (const slug of recentCards) {
@@ -120,34 +122,51 @@ export async function organizeCommand(
         const neighborInfo = cardData.get(neighbor);
         if (!neighborInfo) continue;
 
-        // Create a stable pair key to avoid duplicates
         const pairKey = [slug, neighbor].sort().join("↔");
         if (seen.has(pairKey)) continue;
         seen.add(pairKey);
 
-        // Only include content excerpts (first 300 chars) to keep output manageable
-        const excerpt1 = info.content.slice(0, 300);
-        const excerpt2 = neighborInfo.content.slice(0, 300);
-
-        pairSections.push(
-          `### ${slug} ↔ ${neighbor}\n` +
-          `**${slug}** (${info.title}):\n${excerpt1}\n\n` +
-          `**${neighbor}** (${neighborInfo.title}):\n${excerpt2}`,
-        );
+        recentPairs.push({
+          slug1: slug,
+          slug2: neighbor,
+          title1: info.title,
+          title2: neighborInfo.title,
+        });
       }
     }
+  }
 
-    if (pairSections.length > 0) {
-      // Cap at 20 pairs to avoid overwhelming output
-      const capped = pairSections.slice(0, 20);
-      sections.push(
-        "## Recently Modified Cards + Neighbors (check for contradictions)\n" +
-        capped.join("\n\n") +
-        (pairSections.length > 20
-          ? `\n\n... and ${pairSections.length - 20} more pairs not shown. Run with a recent \`since\` date for targeted checks.`
-          : ""),
+  // Cap at 20 pairs
+  const cappedPairs = recentPairs.slice(0, 20);
+
+  if (json) {
+    const jsonOutput = {
+      stats,
+      orphans: orphans.map((o) => ({ slug: o.slug, title: cardData.get(o.slug)?.title ?? o.slug })),
+      hubs: hubs.map((h) => ({ slug: h.slug, title: cardData.get(h.slug)?.title ?? h.slug, inbound: h.inbound })),
+      conflicts: conflicts.map((slug) => ({ slug, title: cardData.get(slug)?.title ?? slug })),
+      recentPairs: cappedPairs,
+    };
+    return { output: JSON.stringify(jsonOutput, null, 2), exitCode: 0 };
+  }
+
+  if (cappedPairs.length > 0) {
+    const pairSections = cappedPairs.map((p) => {
+      const info1 = cardData.get(p.slug1)!;
+      const info2 = cardData.get(p.slug2)!;
+      return (
+        `### ${p.slug1} ↔ ${p.slug2}\n` +
+        `**${p.slug1}** (${p.title1}):\n${info1.content.slice(0, 300)}\n\n` +
+        `**${p.slug2}** (${p.title2}):\n${info2.content.slice(0, 300)}`
       );
-    }
+    });
+    sections.push(
+      "## Recently Modified Cards + Neighbors (check for contradictions)\n" +
+      pairSections.join("\n\n") +
+      (recentPairs.length > 20
+        ? `\n\n... and ${recentPairs.length - 20} more pairs not shown. Run with a recent \`since\` date for targeted checks.`
+        : ""),
+    );
   }
 
   return { output: sections.join("\n\n"), exitCode: 0 };

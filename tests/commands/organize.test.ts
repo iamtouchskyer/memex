@@ -106,4 +106,41 @@ describe("organize command", () => {
     // "old" was not modified after since, so its outbound links shouldn't generate pairs
     expect(result.output).not.toContain("old ↔ new");
   });
+
+  it("returns valid JSON with expected keys when json=true", async () => {
+    await writeFile(
+      join(tmpDir, "cards", "alpha.md"),
+      "---\ntitle: Alpha\ncreated: 2026-03-25\nmodified: 2026-03-25\nsource: test\nstatus: conflict\n---\nSee [[beta]].",
+    );
+    await writeFile(
+      join(tmpDir, "cards", "beta.md"),
+      "---\ntitle: Beta\ncreated: 2026-03-25\nmodified: 2026-03-25\nsource: test\n---\nLinked from alpha.",
+    );
+    const result = await organizeCommand(store, null, true);
+    const parsed = JSON.parse(result.output);
+    expect(parsed).toHaveProperty("stats");
+    expect(parsed).toHaveProperty("orphans");
+    expect(parsed).toHaveProperty("hubs");
+    expect(parsed).toHaveProperty("conflicts");
+    expect(parsed).toHaveProperty("recentPairs");
+    expect(parsed.stats).toBeInstanceOf(Array);
+    expect(parsed.conflicts.length).toBe(1);
+    expect(parsed.conflicts[0].slug).toBe("alpha");
+    expect(parsed.recentPairs.length).toBeGreaterThan(0);
+    expect(parsed.recentPairs[0]).toHaveProperty("slug1");
+    expect(parsed.recentPairs[0]).toHaveProperty("slug2");
+    expect(parsed.recentPairs[0]).toHaveProperty("title1");
+    expect(parsed.recentPairs[0]).toHaveProperty("title2");
+  });
+
+  it("json output does not include content excerpts", async () => {
+    await writeFile(
+      join(tmpDir, "cards", "verbose.md"),
+      "---\ntitle: Verbose\ncreated: 2026-03-25\nmodified: 2026-03-25\nsource: test\n---\nThis is some long content that should not appear in JSON output.",
+    );
+    const result = await organizeCommand(store, null, true);
+    const parsed = JSON.parse(result.output);
+    const jsonStr = JSON.stringify(parsed);
+    expect(jsonStr).not.toContain("long content that should not appear");
+  });
 });

@@ -8020,6 +8020,22 @@ function cosineSimilarity(a, b) {
   if (denom === 0) return 0;
   return dot / denom;
 }
+function buildEmbeddingText(raw) {
+  const { data, content } = parseFrontmatter(raw);
+  const parts = [];
+  for (const key of ["title", "category", "context", "keywords", "tags"]) {
+    const val = data[key];
+    if (typeof val === "string" && val.trim()) {
+      parts.push(`${key}: ${val.trim()}`);
+    } else if (Array.isArray(val) && val.length > 0) {
+      parts.push(`${key}: ${val.join(", ")}`);
+    }
+  }
+  if (parts.length === 0) {
+    return content;
+  }
+  return parts.join("\n") + "\n\n" + content;
+}
 async function embedCards(store, provider, cache) {
   const cards = await store.scanAll();
   const currentSlugs = /* @__PURE__ */ new Set();
@@ -8027,9 +8043,10 @@ async function embedCards(store, provider, cache) {
   for (const card of cards) {
     currentSlugs.add(card.slug);
     const raw = await store.readCard(card.slug);
-    const hash2 = contentHash(raw);
+    const text = buildEmbeddingText(raw);
+    const hash2 = contentHash(text);
     if (cache.needsUpdate(card.slug, hash2)) {
-      toEmbed.push({ slug: card.slug, hash: hash2, text: raw });
+      toEmbed.push({ slug: card.slug, hash: hash2, text });
     }
   }
   if (toEmbed.length > 0) {
@@ -8055,6 +8072,7 @@ var DEFAULT_EMBEDDING_MODEL, DEFAULT_AZURE_EMBEDDING_DEPLOYMENT, OpenAIEmbedding
 var init_embeddings = __esm({
   "src/lib/embeddings.ts"() {
     "use strict";
+    init_parser();
     DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small";
     DEFAULT_AZURE_EMBEDDING_DEPLOYMENT = "text-embedding-3-large";
     OpenAIEmbeddingProvider = class {
@@ -8096,7 +8114,7 @@ var init_embeddings = __esm({
         return results;
       }
       requestEmbeddings(texts) {
-        return new Promise((resolve2, reject) => {
+        return new Promise((resolve3, reject) => {
           const body = JSON.stringify({
             model: this.model,
             input: texts
@@ -8131,7 +8149,7 @@ var init_embeddings = __esm({
                     return;
                   }
                   const sorted = parsed.data.sort((a, b) => a.index - b.index);
-                  resolve2(sorted.map((d) => d.embedding));
+                  resolve3(sorted.map((d) => d.embedding));
                 } catch (e) {
                   reject(new Error(`Failed to parse OpenAI response: ${e}`));
                 }
@@ -8242,7 +8260,7 @@ var init_embeddings = __esm({
         const url2 = new URL("/api/embed", this.baseUrl);
         const isHttps = url2.protocol === "https:";
         const requestFn = isHttps ? httpsRequest : httpRequest;
-        return new Promise((resolve2, reject) => {
+        return new Promise((resolve3, reject) => {
           const req = requestFn(
             {
               hostname: url2.hostname,
@@ -8274,7 +8292,7 @@ var init_embeddings = __esm({
                     );
                     return;
                   }
-                  resolve2(
+                  resolve3(
                     parsed.embeddings.map(
                       (v) => normalizeVector(v)
                     )
@@ -8384,15 +8402,24 @@ async function searchCommand(store, query, options2 = {}) {
     return semanticSearch(query, allCards, shouldPrefix, options2);
   }
   if (!query) {
+    const rawLimit = options2.limit ?? DEFAULT_LIMIT;
+    const limit = rawLimit < 0 ? DEFAULT_LIMIT : rawLimit;
+    const toProcess = limit > 0 ? allCards.slice(0, limit) : [];
     const items = await Promise.all(
-      allCards.map(async (c) => {
+      toProcess.map(async (c) => {
         const raw = await c.store.readCard(c.slug);
         const { data } = parseFrontmatter(raw);
         const prefixedSlug = shouldPrefix ? `${c.dirPrefix}/${c.slug}` : c.slug;
         return { slug: prefixedSlug, title: String(data.title || c.slug) };
       })
     );
-    return { output: formatCardList(items), exitCode: 0 };
+    let output = formatCardList(items);
+    if (allCards.length > toProcess.length) {
+      output += `
+
+(${toProcess.length} of ${allCards.length} cards shown. Use \`memex search <keyword>\` to narrow results.)`;
+    }
+    return { output, exitCode: 0, totalCount: allCards.length };
   }
   return keywordSearch(query, allCards, shouldPrefix, options2);
 }
@@ -8498,7 +8525,7 @@ async function keywordSearch(query, allCards, shouldPrefix, options2) {
       options2.compact ? formatCompactSearchResult(item) : formatSearchResult(item)
     );
   }
-  return { output: results.join(options2.compact ? "\n" : "\n\n"), exitCode: 0 };
+  return { output: results.join(options2.compact ? "\n" : "\n\n"), exitCode: 0, totalCount: matchedCards.length };
 }
 async function semanticSearch(query, allCards, shouldPrefix, options2) {
   const rawLimit = options2.limit ?? DEFAULT_LIMIT;
@@ -8568,7 +8595,7 @@ async function semanticSearch(query, allCards, shouldPrefix, options2) {
       options2.compact ? formatCompactSearchResult(item, card.score) : formatSearchResult(item)
     );
   }
-  return { output: results.join(options2.compact ? "\n" : "\n\n"), exitCode: 0 };
+  return { output: results.join(options2.compact ? "\n" : "\n\n"), exitCode: 0, totalCount: scored.length };
 }
 async function computeKeywordScores(query, allCards) {
   const scores = /* @__PURE__ */ new Map();
@@ -8613,9 +8640,38 @@ var init_search = __esm({
   }
 });
 
-// src/commands/links.ts
+// src/lib/scan.ts
 import { readdir as readdir3 } from "node:fs/promises";
 import { join as join6, basename as basename2 } from "node:path";
+async function scanMarkdownFiles(dir) {
+  const results = [];
+  async function walk(d) {
+    let entries;
+    try {
+      entries = await readdir3(d, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const fullPath = join6(d, entry.name);
+      if (entry.isDirectory()) {
+        await walk(fullPath);
+      } else if (entry.isFile() && entry.name.endsWith(".md")) {
+        results.push({ slug: basename2(entry.name, ".md"), path: fullPath });
+      }
+    }
+  }
+  await walk(dir);
+  return results;
+}
+var init_scan = __esm({
+  "src/lib/scan.ts"() {
+    "use strict";
+  }
+});
+
+// src/commands/links.ts
+import { join as join7, resolve as resolve2 } from "node:path";
 import { readFile as readFile5 } from "node:fs/promises";
 async function linksCommand(store, slug, opts) {
   const cards = await store.scanAll();
@@ -8640,7 +8696,9 @@ async function linksCommand(store, slug, opts) {
   }
   if (opts?.home && opts?.extraLinkDirs && opts.extraLinkDirs.length > 0) {
     for (const dirName of opts.extraLinkDirs) {
-      const extraFiles = await scanMarkdownFiles(join6(opts.home, dirName));
+      const extraDir = resolve2(join7(opts.home, dirName));
+      if (extraDir === resolve2(store.cardsDir)) continue;
+      const extraFiles = await scanMarkdownFiles(extraDir);
       for (const file2 of extraFiles) {
         const raw = await readFile5(file2.path, "utf-8");
         const { content } = parseFrontmatter(raw);
@@ -8720,33 +8778,13 @@ function formatLinkSummary(stats, totalCards, filter) {
   lines.push(`Avg inbound links: ${avgIn}`);
   return lines.join("\n");
 }
-async function scanMarkdownFiles(dir) {
-  const results = [];
-  async function walk(d) {
-    let entries;
-    try {
-      entries = await readdir3(d, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      const fullPath = join6(d, entry.name);
-      if (entry.isDirectory()) {
-        await walk(fullPath);
-      } else if (entry.isFile() && entry.name.endsWith(".md")) {
-        results.push({ slug: basename2(entry.name, ".md"), path: fullPath });
-      }
-    }
-  }
-  await walk(dir);
-  return results;
-}
 var HUB_THRESHOLD2;
 var init_links = __esm({
   "src/commands/links.ts"() {
     "use strict";
     init_parser();
     init_formatter();
+    init_scan();
     HUB_THRESHOLD2 = 10;
   }
 });
@@ -8774,7 +8812,7 @@ function toDateString3(val) {
   if (val instanceof Date) return val.toISOString().split("T")[0];
   return String(val || "");
 }
-async function organizeCommand(store, lastOrganize) {
+async function organizeCommand(store, lastOrganize, json2) {
   const cards = await store.scanAll();
   if (cards.length === 0) return { output: "No cards yet.", exitCode: 0 };
   const outboundMap = /* @__PURE__ */ new Map();
@@ -8844,8 +8882,8 @@ async function organizeCommand(store, lastOrganize) {
       recentCards.push(card.slug);
     }
   }
+  const recentPairs = [];
   if (recentCards.length > 0) {
-    const pairSections = [];
     const seen = /* @__PURE__ */ new Set();
     for (const slug of recentCards) {
       const info = cardData.get(slug);
@@ -8857,26 +8895,42 @@ async function organizeCommand(store, lastOrganize) {
         const pairKey = [slug, neighbor].sort().join("\u2194");
         if (seen.has(pairKey)) continue;
         seen.add(pairKey);
-        const excerpt1 = info.content.slice(0, 300);
-        const excerpt2 = neighborInfo.content.slice(0, 300);
-        pairSections.push(
-          `### ${slug} \u2194 ${neighbor}
-**${slug}** (${info.title}):
-${excerpt1}
-
-**${neighbor}** (${neighborInfo.title}):
-${excerpt2}`
-        );
+        recentPairs.push({
+          slug1: slug,
+          slug2: neighbor,
+          title1: info.title,
+          title2: neighborInfo.title
+        });
       }
     }
-    if (pairSections.length > 0) {
-      const capped = pairSections.slice(0, 20);
-      sections.push(
-        "## Recently Modified Cards + Neighbors (check for contradictions)\n" + capped.join("\n\n") + (pairSections.length > 20 ? `
+  }
+  const cappedPairs = recentPairs.slice(0, 20);
+  if (json2) {
+    const jsonOutput = {
+      stats,
+      orphans: orphans.map((o) => ({ slug: o.slug, title: cardData.get(o.slug)?.title ?? o.slug })),
+      hubs: hubs.map((h) => ({ slug: h.slug, title: cardData.get(h.slug)?.title ?? h.slug, inbound: h.inbound })),
+      conflicts: conflicts.map((slug) => ({ slug, title: cardData.get(slug)?.title ?? slug })),
+      recentPairs: cappedPairs
+    };
+    return { output: JSON.stringify(jsonOutput, null, 2), exitCode: 0 };
+  }
+  if (cappedPairs.length > 0) {
+    const pairSections = cappedPairs.map((p) => {
+      const info1 = cardData.get(p.slug1);
+      const info2 = cardData.get(p.slug2);
+      return `### ${p.slug1} \u2194 ${p.slug2}
+**${p.slug1}** (${p.title1}):
+${info1.content.slice(0, 300)}
 
-... and ${pairSections.length - 20} more pairs not shown. Run with a recent \`since\` date for targeted checks.` : "")
-      );
-    }
+**${p.slug2}** (${p.title2}):
+${info2.content.slice(0, 300)}`;
+    });
+    sections.push(
+      "## Recently Modified Cards + Neighbors (check for contradictions)\n" + pairSections.join("\n\n") + (recentPairs.length > 20 ? `
+
+... and ${recentPairs.length - 20} more pairs not shown. Run with a recent \`since\` date for targeted checks.` : "")
+    );
   }
   return { output: sections.join("\n\n"), exitCode: 0 };
 }
@@ -8890,7 +8944,7 @@ var init_organize = __esm({
 
 // src/commands/flomo.ts
 import { readFile as readFile9, writeFile as writeFile5 } from "node:fs/promises";
-import { join as join13, dirname as dirname8 } from "node:path";
+import { join as join14, dirname as dirname8 } from "node:path";
 function isValidFlomoWebhookUrl(url2) {
   try {
     const parsed = new URL(url2);
@@ -8900,7 +8954,7 @@ function isValidFlomoWebhookUrl(url2) {
   }
 }
 async function readFlomoConfig(memexHome) {
-  const configPath = join13(memexHome, ".memexrc");
+  const configPath = join14(memexHome, ".memexrc");
   try {
     const content = await readFile9(configPath, "utf-8");
     const parsed = JSON.parse(content);
@@ -8915,7 +8969,7 @@ async function writeFlomoConfig(memexHome, webhookUrl) {
   if (!isValidFlomoWebhookUrl(webhookUrl)) {
     return { success: false, error: "Invalid flomo webhook URL. Must be https://flomoapp.com/iwh/..." };
   }
-  const configPath = join13(memexHome, ".memexrc");
+  const configPath = join14(memexHome, ".memexrc");
   let existing = {};
   try {
     const content = await readFile9(configPath, "utf-8");
@@ -31383,7 +31437,7 @@ var init_protocol = __esm({
               return;
             }
             const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-            await new Promise((resolve2) => setTimeout(resolve2, pollInterval));
+            await new Promise((resolve3) => setTimeout(resolve3, pollInterval));
             options2?.signal?.throwIfAborted();
           }
         } catch (error48) {
@@ -31400,7 +31454,7 @@ var init_protocol = __esm({
        */
       request(request, resultSchema, options2) {
         const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options2 ?? {};
-        return new Promise((resolve2, reject) => {
+        return new Promise((resolve3, reject) => {
           const earlyReject = (error48) => {
             reject(error48);
           };
@@ -31478,7 +31532,7 @@ var init_protocol = __esm({
               if (!parseResult.success) {
                 reject(parseResult.error);
               } else {
-                resolve2(parseResult.data);
+                resolve3(parseResult.data);
               }
             } catch (error48) {
               reject(error48);
@@ -31739,12 +31793,12 @@ var init_protocol = __esm({
           }
         } catch {
         }
-        return new Promise((resolve2, reject) => {
+        return new Promise((resolve3, reject) => {
           if (signal.aborted) {
             reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
             return;
           }
-          const timeoutId = setTimeout(resolve2, interval);
+          const timeoutId = setTimeout(resolve3, interval);
           signal.addEventListener("abort", () => {
             clearTimeout(timeoutId);
             reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -34771,7 +34825,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve2.call(this, root, ref);
+      let _sch = resolve3.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a2 = root.localRefs) === null || _a2 === void 0 ? void 0 : _a2[ref];
         const { schemaId } = this.opts;
@@ -34798,7 +34852,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve2(root, ref) {
+    function resolve3(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -35373,7 +35427,7 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve2(baseURI, relativeURI, options2) {
+    function resolve3(baseURI, relativeURI, options2) {
       const schemelessOptions = options2 ? Object.assign({ scheme: "null" }, options2) : { scheme: "null" };
       const resolved = resolveComponent(parse4(baseURI, schemelessOptions), parse4(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
@@ -35600,7 +35654,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize,
-      resolve: resolve2,
+      resolve: resolve3,
       resolveComponent,
       equal,
       serialize,
@@ -39724,7 +39778,7 @@ var init_mcp = __esm({
         let task = createTaskResult.task;
         const pollInterval = task.pollInterval ?? 5e3;
         while (task.status !== "completed" && task.status !== "failed" && task.status !== "cancelled") {
-          await new Promise((resolve2) => setTimeout(resolve2, pollInterval));
+          await new Promise((resolve3) => setTimeout(resolve3, pollInterval));
           const updatedTask = await extra.taskStore.getTask(taskId);
           if (!updatedTask) {
             throw new McpError(ErrorCode.InternalError, `Task ${taskId} not found during polling`);
@@ -40253,6 +40307,7 @@ var init_hooks = __esm({
 
 // src/mcp/operations.ts
 function registerOperations(server, store, hooks, home, getClientName) {
+  const INDEX_CHAR_LIMIT = 4e3;
   server.registerTool("memex_recall", {
     description: "IMPORTANT: You MUST call this at the START of every new task or conversation, BEFORE doing any work. This retrieves your persistent memory \u2014 knowledge cards from previous sessions with [[bidirectional links]]. Returns the keyword index (if exists) or card list. Optionally search by query. Without calling this first, you will miss context from prior sessions and repeat past mistakes.",
     inputSchema: external_exports3.object({
@@ -40273,10 +40328,15 @@ function registerOperations(server, store, hooks, home, getClientName) {
     if (!filter) {
       const indexResult = await readCommand(store, "index");
       if (indexResult.success) {
-        return { content: [{ type: "text", text: indexResult.content }] };
+        const fullIndex = indexResult.content;
+        if (fullIndex.length <= INDEX_CHAR_LIMIT) {
+          return { content: [{ type: "text", text: fullIndex }] };
+        }
+        const summary = summarizeIndex(fullIndex, INDEX_CHAR_LIMIT);
+        return { content: [{ type: "text", text: summary }] };
       }
     }
-    const listResult = await searchCommand(store, void 0, { filter });
+    const listResult = await searchCommand(store, void 0, { limit: 10, filter });
     return { content: [{ type: "text", text: listResult.output || "No cards yet." }] };
   });
   server.registerTool("memex_retro", {
@@ -40362,12 +40422,12 @@ function registerOperations(server, store, hooks, home, getClientName) {
     })
   }, async ({ file_path }) => {
     const { readFile: readFile10 } = await import("node:fs/promises");
-    const { resolve: resolve2, extname } = await import("node:path");
+    const { resolve: resolve3, extname } = await import("node:path");
     const ext = extname(file_path).toLowerCase();
     if (ext !== ".html" && ext !== ".htm") {
       return { content: [{ type: "text", text: "Error: Only .html and .htm files are accepted." }], isError: true };
     }
-    const resolved = resolve2(file_path);
+    const resolved = resolve3(file_path);
     if (resolved.includes("..") || file_path.includes("\0")) {
       return { content: [{ type: "text", text: "Error: Invalid file path." }], isError: true };
     }
@@ -40405,6 +40465,40 @@ Use memex_write to create curated cards from these memos. Consider:
     return { content: [{ type: "text", text }] };
   });
 }
+function summarizeIndex(indexContent, charLimit) {
+  const lines = indexContent.split("\n");
+  const sections = [];
+  let currentHeading = "";
+  let currentCount = 0;
+  for (const line of lines) {
+    const headingMatch = line.match(/^##\s+(.+)/);
+    if (headingMatch) {
+      if (currentHeading) {
+        sections.push({ heading: currentHeading, entryCount: currentCount });
+      }
+      currentHeading = headingMatch[1];
+      currentCount = 0;
+    } else if (line.match(/^-\s+/) && currentHeading) {
+      currentCount++;
+    }
+  }
+  if (currentHeading) {
+    sections.push({ heading: currentHeading, entryCount: currentCount });
+  }
+  const totalEntries = sections.reduce((sum, s) => sum + s.entryCount, 0);
+  const truncated = indexContent.slice(0, charLimit);
+  const lastNewline = truncated.lastIndexOf("\n");
+  const cleanTruncated = lastNewline > 0 ? truncated.slice(0, lastNewline) : truncated;
+  const sectionSummary = sections.map((s) => `- **${s.heading}**: ${s.entryCount} entries`).join("\n");
+  return `Index summary (${totalEntries} total entries across ${sections.length} sections):
+` + sectionSummary + `
+
+--- Showing first ${charLimit} chars ---
+
+` + cleanTruncated + `
+
+(Index truncated. Use \`memex search <keyword>\` to find specific cards.)`;
+}
 var init_operations = __esm({
   "src/mcp/operations.ts"() {
     "use strict";
@@ -40425,12 +40519,12 @@ __export(server_exports, {
   createMemexServer: () => createMemexServer
 });
 import { existsSync as existsSync2, readFileSync as readFileSync2 } from "node:fs";
-import { join as join14, dirname as dirname9 } from "node:path";
+import { join as join15, dirname as dirname9 } from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 function readPackageJson(startDir) {
   let dir = startDir;
   for (let depth = 0; depth < 6; depth++) {
-    const path = join14(dir, "package.json");
+    const path = join15(dir, "package.json");
     if (existsSync2(path)) {
       const pkg3 = JSON.parse(readFileSync2(path, "utf-8"));
       if (pkg3.name === "@touchskyer/memex") return pkg3;
@@ -40459,16 +40553,18 @@ function createMemexServer(store, home) {
     await origConnect(transport);
     if (home) await autoFetch(home);
   };
+  const MCP_MAX_RESULTS = 50;
   server.registerTool("memex_search", {
     description: "Low-level search. Prefer memex_recall for task-start workflows.",
     inputSchema: external_exports3.object({
       query: external_exports3.string().optional().describe("Search keyword. Omit to list all cards."),
-      limit: external_exports3.number().optional().describe("Max results (default 10)"),
+      limit: external_exports3.number().optional().describe(`Max results (default 10, max ${MCP_MAX_RESULTS})`),
       semantic: external_exports3.boolean().optional().describe("Use embedding-based semantic search")
     })
   }, async ({ query, limit, semantic }) => {
     const config2 = home ? await readConfig(home) : void 0;
-    const result = await searchCommand(store, query, { limit, semantic, config: config2, memexHome: home });
+    const clampedLimit = Math.min(limit ?? 10, MCP_MAX_RESULTS);
+    const result = await searchCommand(store, query, { limit: clampedLimit, semantic, config: config2, memexHome: home });
     return { content: [{ type: "text", text: result.output || "No cards found." }] };
   });
   server.registerTool("memex_read", {
@@ -40507,7 +40603,12 @@ function createMemexServer(store, home) {
       slug: external_exports3.string().optional().describe("Card slug. Omit for global stats.")
     })
   }, async ({ slug }) => {
-    const result = await linksCommand(store, slug);
+    let opts;
+    if (home) {
+      const config2 = await readConfig(home);
+      opts = { home, extraLinkDirs: config2.extraLinkDirs };
+    }
+    const result = await linksCommand(store, slug, opts);
     return { content: [{ type: "text", text: result.output || "No cards found." }] };
   });
   server.registerTool("memex_archive", {
@@ -40647,12 +40748,12 @@ var init_stdio2 = __esm({
         this.onclose?.();
       }
       send(message) {
-        return new Promise((resolve2) => {
+        return new Promise((resolve3) => {
           const json2 = serializeMessage(message);
           if (this._stdout.write(json2)) {
-            resolve2();
+            resolve3();
           } else {
-            this._stdout.once("drain", resolve2);
+            this._stdout.once("drain", resolve3);
           }
         });
       }
@@ -40685,7 +40786,7 @@ init_read();
 init_search();
 init_links();
 init_archive();
-import { join as join15, dirname as dirname10 } from "node:path";
+import { join as join16, dirname as dirname10 } from "node:path";
 import { readFileSync as readFileSync3 } from "node:fs";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 
@@ -40695,7 +40796,7 @@ init_parser();
 init_sync();
 init_config();
 import { createServer } from "node:http";
-import { join as join7 } from "node:path";
+import { join as join8 } from "node:path";
 import { readFile as readFile6, access as access2 } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname as dirname7 } from "node:path";
@@ -40724,13 +40825,13 @@ async function resolveAsset(name, ...candidates) {
 }
 var SERVE_UI_HTML = resolveAsset(
   "serve-ui.html",
-  join7(__dirname, "serve-ui.html"),
-  join7(__dirname, "commands", "serve-ui.html")
+  join8(__dirname, "serve-ui.html"),
+  join8(__dirname, "commands", "serve-ui.html")
 );
 var SHARE_CARD_JS = resolveAsset(
   "share-card.js",
-  join7(__dirname, "..", "share-card", "share-card.js"),
-  join7(__dirname, "share-card", "share-card.js")
+  join8(__dirname, "..", "share-card", "share-card.js"),
+  join8(__dirname, "share-card", "share-card.js")
 );
 var MEMRA_URL = "https://memra.vercel.app";
 var cachedHTML = null;
@@ -40775,7 +40876,7 @@ async function serveCommand(port, opts = {}) {
     return null;
   }
   const showBanner = !syncConfig.remote;
-  const store = new CardStore(join7(home, "cards"), join7(home, "archive"));
+  const store = new CardStore(join8(home, "cards"), join8(home, "archive"));
   const server = createServer(async (req, res) => {
     try {
       const url2 = new URL(req.url || "/", `http://localhost:${port}`);
@@ -41038,13 +41139,13 @@ Run: memex sync --init`;
 }
 
 // src/commands/import.ts
-import { join as join9 } from "node:path";
+import { join as join10 } from "node:path";
 import { homedir as homedir3 } from "node:os";
 import { existsSync } from "node:fs";
 
 // src/importers/openclaw.ts
 import { readdir as readdir4, readFile as readFile7 } from "node:fs/promises";
-import { join as join8, basename as basename3 } from "node:path";
+import { join as join9, basename as basename3 } from "node:path";
 function slugify(text) {
   return text.toLowerCase().replace(/[^\w\u4e00-\u9fff\s-]/g, "").replace(/\s+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 80);
 }
@@ -41104,14 +41205,14 @@ function generateSlugs(sections, date5, fallbackName) {
 var OpenClawImporter = class {
   name = "openclaw";
   description = "Import daily memory files from OpenClaw (~/.openclaw/workspace/memory/)";
-  defaultSourceDir = join8(".openclaw", "workspace", "memory");
+  defaultSourceDir = join9(".openclaw", "workspace", "memory");
   async run(opts) {
     const { store, sourceDir, dryRun = false, onLog = console.log } = opts;
     const files = (await readdir4(sourceDir)).filter((f) => f.endsWith(".md")).sort();
     let created = 0;
     let skipped = 0;
     for (const file2 of files) {
-      const content = await readFile7(join8(sourceDir, file2), "utf-8");
+      const content = await readFile7(join9(sourceDir, file2), "utf-8");
       const date5 = extractDateFromFilename(file2);
       const sections = extractH2Sections(content);
       if (sections.length === 0) {
@@ -41175,7 +41276,7 @@ Usage: memex import <source> [--dry-run] [--dir <path>]`
       error: `Unknown importer: "${source}". Available: ${names}`
     };
   }
-  const sourceDir = opts.dir || join9(homedir3(), importer.defaultSourceDir);
+  const sourceDir = opts.dir || join10(homedir3(), importer.defaultSourceDir);
   if (!existsSync(sourceDir)) {
     return {
       success: false,
@@ -41200,8 +41301,8 @@ Usage: memex import <source> [--dry-run] [--dir <path>]`
 // src/commands/doctor.ts
 init_store();
 init_parser();
-import { readdir as readdir5 } from "node:fs/promises";
-import { join as join10, basename as basename4 } from "node:path";
+init_scan();
+import { join as join11 } from "node:path";
 async function checkCollisions(cardsDir, archiveDir) {
   try {
     const basenameStore = new CardStore(cardsDir, archiveDir, false);
@@ -41295,24 +41396,11 @@ async function checkOrphans(cardsDir, archiveDir, verbose) {
 }
 async function scanExtraSlugs(home, extraDirs) {
   const slugs = /* @__PURE__ */ new Set();
-  async function walkDir(dir) {
-    let entries;
-    try {
-      entries = await readdir5(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      const fullPath = join10(dir, entry.name);
-      if (entry.isDirectory()) {
-        await walkDir(fullPath);
-      } else if (entry.isFile() && entry.name.endsWith(".md")) {
-        slugs.add(basename4(entry.name, ".md"));
-      }
-    }
-  }
   for (const dirName of extraDirs) {
-    await walkDir(join10(home, dirName));
+    const files = await scanMarkdownFiles(join11(home, dirName));
+    for (const file2 of files) {
+      slugs.add(file2.slug);
+    }
   }
   return slugs;
 }
@@ -41449,7 +41537,7 @@ async function doctorCommand(cardsDir, archiveDir, json2) {
 
 // src/commands/migrate.ts
 import { readFile as readFile8, writeFile as writeFile4 } from "node:fs/promises";
-import { join as join11 } from "node:path";
+import { join as join12 } from "node:path";
 async function migrateCommand(memexHome, cardsDir, archiveDir) {
   try {
     const doctorResult = await doctorCommand(cardsDir, archiveDir);
@@ -41461,7 +41549,7 @@ async function migrateCommand(memexHome, cardsDir, archiveDir) {
 Resolve collisions before enabling nestedSlugs.`
       };
     }
-    const configPath = join11(memexHome, ".memexrc");
+    const configPath = join12(memexHome, ".memexrc");
     let config2 = {};
     try {
       const content = await readFile8(configPath, "utf-8");
@@ -41486,15 +41574,15 @@ ${doctorResult.output}`
 // src/commands/backlinks.ts
 init_store();
 init_parser();
-import { join as join12 } from "node:path";
+import { join as join13 } from "node:path";
 async function backlinksCommand(store, slug, options2 = {}) {
   const storesToSearch = [
     { store, dirPrefix: "cards" }
   ];
   if (options2.all && options2.config?.searchDirs && options2.config.searchDirs.length > 0 && options2.memexHome) {
-    const archiveDir = join12(options2.memexHome, "archive");
+    const archiveDir = join13(options2.memexHome, "archive");
     for (const searchDir of options2.config.searchDirs) {
-      const fullPath = join12(options2.memexHome, searchDir);
+      const fullPath = join13(options2.memexHome, searchDir);
       const additionalStore = new CardStore(fullPath, archiveDir, store["nestedSlugs"]);
       const dirName = searchDir.split("/").pop() || searchDir;
       storesToSearch.push({ store: additionalStore, dirPrefix: dirName });
@@ -41525,13 +41613,13 @@ ${lines.join("\n")}`;
 init_organize();
 init_flomo();
 var __dirname3 = dirname10(fileURLToPath3(import.meta.url));
-var pkg2 = JSON.parse(readFileSync3(join15(__dirname3, "..", "package.json"), "utf-8"));
+var pkg2 = JSON.parse(readFileSync3(join16(__dirname3, "..", "package.json"), "utf-8"));
 async function getStore(opts) {
   const home = await resolveMemexHome();
   await warnIfEmptyCards(home);
   const config2 = await readConfig(home);
   const nestedSlugs = opts?.nested ?? config2.nestedSlugs;
-  return new CardStore(join15(home, "cards"), join15(home, "archive"), nestedSlugs);
+  return new CardStore(join16(home, "cards"), join16(home, "archive"), nestedSlugs);
 }
 function exit(code) {
   if (process.stdout.writableLength === 0) {
@@ -41653,9 +41741,9 @@ program2.command("sync").description("Sync cards across devices via git").option
     }
   }
 );
-program2.command("organize").description("Analyze card network: orphans, hubs, conflicts, and contradiction pairs").option("--since <date>", "Only check cards modified since this date (YYYY-MM-DD)").option("--nested", "Use nested (path-preserving) slugs for this command").action(async (opts) => {
+program2.command("organize").description("Analyze card network: orphans, hubs, conflicts, and contradiction pairs").option("--since <date>", "Only check cards modified since this date (YYYY-MM-DD)").option("--nested", "Use nested (path-preserving) slugs for this command").option("--json", "Output results as JSON").action(async (opts) => {
   const store = await getStore({ nested: opts.nested });
-  const result = await organizeCommand(store, opts.since ?? null);
+  const result = await organizeCommand(store, opts.since ?? null, opts.json);
   if (result.output) process.stdout.write(result.output + "\n");
   exit(result.exitCode);
 });
@@ -41681,8 +41769,8 @@ program2.command("import [source]").description("Import memories from other tool
 program2.command("doctor").description("Check memex health and configuration").option("--check-collisions", "Check for slug collisions in basename mode").option("--verbose", "Show detailed output for warnings").option("--json", "Output results as JSON for programmatic use").option("--extra-dirs <dirs>", "Comma-separated extra directories for link resolution").action(async (opts) => {
   const home = await resolveMemexHome();
   const config2 = await readConfig(home);
-  const cardsDir = join15(home, "cards");
-  const archiveDir = join15(home, "archive");
+  const cardsDir = join16(home, "cards");
+  const archiveDir = join16(home, "archive");
   if (opts.checkCollisions) {
     const result = await doctorCommand(cardsDir, archiveDir, opts.json);
     if (result.output) process.stdout.write(result.output + "\n");
@@ -41696,8 +41784,8 @@ program2.command("doctor").description("Check memex health and configuration").o
 });
 program2.command("migrate").description("Migrate memex configuration").option("--enable-nested", "Enable nestedSlugs in config").action(async (opts) => {
   const home = await resolveMemexHome();
-  const cardsDir = join15(home, "cards");
-  const archiveDir = join15(home, "archive");
+  const cardsDir = join16(home, "cards");
+  const archiveDir = join16(home, "archive");
   if (opts.enableNested) {
     const result = await migrateCommand(home, cardsDir, archiveDir);
     if (result.output) process.stdout.write(result.output + "\n");

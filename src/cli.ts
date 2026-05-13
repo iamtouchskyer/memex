@@ -224,9 +224,10 @@ program
   .description("Analyze card network: orphans, hubs, conflicts, and contradiction pairs")
   .option("--since <date>", "Only check cards modified since this date (YYYY-MM-DD)")
   .option("--nested", "Use nested (path-preserving) slugs for this command")
-  .action(async (opts: { since?: string; nested?: boolean }) => {
+  .option("--json", "Output results as JSON")
+  .action(async (opts: { since?: string; nested?: boolean; json?: boolean }) => {
     const store = await getStore({ nested: opts.nested });
-    const result = await organizeCommand(store, opts.since ?? null);
+    const result = await organizeCommand(store, opts.since ?? null, opts.json);
     if (result.output) process.stdout.write(result.output + "\n");
     exit(result.exitCode);
   });
