@@ -20,13 +20,17 @@ const PEM_PRIVATE_KEY_BLOCK_RE = /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]+?----
 const JWT_RE = /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g;
 const BEARER_RE = /\bAuthorization\s*:\s*Bearer\s+([^\s<>'")]{30,})/gi;
 const ENV_ASSIGNMENT_RE = /^\s*(?:export\s+)?([A-Z0-9_]*(?:API|TOKEN|SECRET|PASSWORD|PRIVATE|CREDENTIAL|AUTH|KEY)[A-Z0-9_]*)\s*=\s*([^\n#]+)/gim;
-const SECRET_LOCATOR_RE = /(^|[\s"'`(])(?:~\/\.(?:claude|aws|config|ssh)(?:\/[^\s"'`)]+)?|\.env(?:\.[A-Za-z0-9_-]+)?)(?=$|[\s"'`)])/i;
+const SECRET_LOCATOR_RE = /(^|[\s"'`(])(?:~\/\.(?:claude|aws|config|ssh|netrc|npmrc|docker|kube)(?:\/[^\s"'`)]+)?|\.env(?:\.[A-Za-z0-9_-]+)?)(?=$|[\s"'`)])/i;
 
 const KNOWN_SECRET_RES = [
   /\bsk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{20,}\b/g,
   /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{30,}\b/g,
   /\bglpat-[A-Za-z0-9_-]{20,}\b/g,
   /\bxox[baprs]-[A-Za-z0-9-]{20,}\b/g,
+  /\bAKIA[0-9A-Z]{16}\b/g,
+  /\bAIza[0-9A-Za-z_-]{35}\b/g,
+  /\b[sr]k_(?:live|test)_[A-Za-z0-9]{24,}\b/g,
+  /\bnpm_[A-Za-z0-9]{36}\b/g,
   JWT_RE,
 ];
 

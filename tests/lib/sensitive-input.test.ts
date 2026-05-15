@@ -74,6 +74,47 @@ describe("sensitive input guard", () => {
     expect(text).not.toContain("abcdefghijklmnopqrstuvwxyz1234567890");
   });
 
+  it("rejects AWS access keys", () => {
+    const result = prepareMemexInput("key is AKIAIOSFODNN7EXAMPLE", "content");
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("Sensitive input rejected");
+  });
+
+  it("rejects Google Cloud API keys", () => {
+    const result = prepareMemexInput("key AIzaSyA1234567890abcdefghijklmnopqrstuv", "content");
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("Sensitive input rejected");
+  });
+
+  it("rejects Stripe live/test keys", () => {
+    // Build dynamically to avoid GitHub push protection false positive
+    const fakeKey = "sk" + "_live_" + "a".repeat(30);
+    const result = prepareMemexInput(fakeKey, "query");
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("Sensitive input rejected");
+  });
+
+  it("rejects npm tokens", () => {
+    const result = prepareMemexInput("npm_abcdefghijklmnopqrstuvwxyz1234567890", "content");
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("Sensitive input rejected");
+  });
+
+  it("warns on expanded credential paths in queries", () => {
+    for (const path of ["~/.netrc", "~/.npmrc", "~/.docker/config.json", "~/.kube/config"]) {
+      const result = prepareMemexInput(`check ${path} for creds`, "query");
+      expect(result.ok).toBe(true);
+      expect(result.warnings[0]).toContain("local credential path");
+    }
+  });
+
+  it("redacts new secret patterns in display text", () => {
+    const text = redactSensitiveText("aws AKIAIOSFODNN7EXAMPLE and npm_abcdefghijklmnopqrstuvwxyz1234567890");
+    expect(text).not.toContain("AKIAIOSFODNN7EXAMPLE");
+    expect(text).not.toContain("npm_abcdefghijklmnopqrstuvwxyz1234567890");
+    expect(text).toContain("<redacted>");
+  });
+
   it("masks flomo webhook URLs", () => {
     expect(maskFlomoWebhookUrl("https://flomoapp.com/iwh/abc/123/")).toBe(
       "https://flomoapp.com/iwh/<redacted>/",
