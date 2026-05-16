@@ -20,7 +20,7 @@ describe("sync config", () => {
   });
 
   afterEach(async () => {
-    await rm(home, { recursive: true });
+    await rm(home, { recursive: true, maxRetries: 3, retryDelay: 100 });
   });
 
   it("returns default config when no file exists", async () => {
@@ -55,7 +55,7 @@ describe("GitAdapter", () => {
   });
 
   afterEach(async () => {
-    await rm(home, { recursive: true });
+    await rm(home, { recursive: true, maxRetries: 3, retryDelay: 100 });
   });
 
   async function createBareRemote(): Promise<string> {
@@ -78,7 +78,7 @@ describe("GitAdapter", () => {
     const { stdout } = await execFile("git", ["-C", home, "remote", "-v"]);
     expect(stdout).toContain(bare);
 
-    await rm(bare, { recursive: true });
+    await rm(bare, { recursive: true, maxRetries: 3, retryDelay: 100 });
   });
 
   it("sync commits and pushes changes", async () => {
@@ -102,8 +102,8 @@ describe("GitAdapter", () => {
     const content = await readFile(join(clone, "cards", "new.md"), "utf-8");
     expect(content).toContain("New card");
 
-    await rm(bare, { recursive: true });
-    await rm(clone, { recursive: true });
+    await rm(bare, { recursive: true, maxRetries: 3, retryDelay: 100 });
+    await rm(clone, { recursive: true, maxRetries: 3, retryDelay: 100 });
   }, 15000);
 
   it("sync with nothing to commit succeeds", async () => {
@@ -114,7 +114,7 @@ describe("GitAdapter", () => {
     const result = await adapter.sync();
     expect(result.success).toBe(true);
 
-    await rm(bare, { recursive: true });
+    await rm(bare, { recursive: true, maxRetries: 3, retryDelay: 100 });
   }, 15000);
 
   it("status returns configured state", async () => {
@@ -128,7 +128,7 @@ describe("GitAdapter", () => {
     expect(status.adapter).toBe("git");
     expect(status.auto).toBe(false);
 
-    await rm(bare, { recursive: true });
+    await rm(bare, { recursive: true, maxRetries: 3, retryDelay: 100 });
   });
 
   it("status returns unconfigured when no sync.json", async () => {
@@ -153,7 +153,7 @@ describe("GitAdapter", () => {
     const config = await readSyncConfig(home);
     expect(config.remote).toBe(bare);
 
-    await rm(bare, { recursive: true });
+    await rm(bare, { recursive: true, maxRetries: 3, retryDelay: 100 });
   });
 
   it("pull returns offline message when fetch fails", async () => {
@@ -162,7 +162,7 @@ describe("GitAdapter", () => {
     await adapter.init(bare);
 
     // Delete bare remote to simulate network failure
-    await rm(bare, { recursive: true });
+    await rm(bare, { recursive: true, maxRetries: 3, retryDelay: 100 });
 
     const result = await adapter.pull();
     expect(result.success).toBe(true);
@@ -212,8 +212,8 @@ describe("GitAdapter", () => {
     const theirsContent = await readFile(join(home, "cards", conflictFile!), "utf-8");
     expect(theirsContent).toContain("Conflicting content from clone2");
 
-    await rm(bare, { recursive: true });
-    await rm(clone2, { recursive: true });
+    await rm(bare, { recursive: true, maxRetries: 3, retryDelay: 100 });
+    await rm(clone2, { recursive: true, maxRetries: 3, retryDelay: 100 });
   }, 20000);
 
   it("push fails gracefully when remote is gone", async () => {
@@ -222,7 +222,7 @@ describe("GitAdapter", () => {
     await adapter.init(bare);
 
     // Delete bare remote
-    await rm(bare, { recursive: true });
+    await rm(bare, { recursive: true, maxRetries: 3, retryDelay: 100 });
 
     // Add a new card and try to push
     await writeFile(
@@ -259,7 +259,7 @@ describe("GitAdapter", () => {
     const config = await readSyncConfig(home);
     expect(config.remote).toBe(bare);
 
-    await rm(bare, { recursive: true });
+    await rm(bare, { recursive: true, maxRetries: 3, retryDelay: 100 });
   });
 
   it("init rejects bare word 'push' as invalid URL", async () => {
@@ -319,8 +319,8 @@ describe("GitAdapter", () => {
     const { stdout } = await execFile("git", ["-C", home, "rev-parse", "--abbrev-ref", "HEAD"]);
     expect(stdout.trim()).toBe("main");
 
-    await rm(bare, { recursive: true });
-    await rm(seed, { recursive: true });
+    await rm(bare, { recursive: true, maxRetries: 3, retryDelay: 100 });
+    await rm(seed, { recursive: true, maxRetries: 3, retryDelay: 100 });
   }, 20000);
 
   it("init normalizes local branch to 'main' when remote is empty", async () => {
@@ -338,7 +338,7 @@ describe("GitAdapter", () => {
     const { stdout } = await execFile("git", ["-C", home, "rev-parse", "--abbrev-ref", "HEAD"]);
     expect(stdout.trim()).toBe("main");
 
-    await rm(bare, { recursive: true });
+    await rm(bare, { recursive: true, maxRetries: 3, retryDelay: 100 });
   }, 15000);
 
   it("init accepts git@... SSH URL (validation only)", async () => {
@@ -356,7 +356,7 @@ describe("GitAdapter", () => {
     // Simulate a fresh install: blow away the cards/ dir created in beforeEach.
     // The remote is pre-seeded to mirror the common case of syncing a new
     // device to an existing memex-cards repo.
-    await rm(join(home, "cards"), { recursive: true });
+    await rm(join(home, "cards"), { recursive: true, maxRetries: 3, retryDelay: 100 });
 
     const bare = await mkdtemp(join(tmpdir(), "memex-bare-"));
     await execFile("git", ["init", "--bare", bare]);
@@ -381,8 +381,8 @@ describe("GitAdapter", () => {
     const config = await readSyncConfig(home);
     expect(config.remote).toBe(bare);
 
-    await rm(bare, { recursive: true });
-    await rm(seed, { recursive: true });
+    await rm(bare, { recursive: true, maxRetries: 3, retryDelay: 100 });
+    await rm(seed, { recursive: true, maxRetries: 3, retryDelay: 100 });
   }, 20000);
 
   it("init with branch mismatch does not create orphan remote branch (#82)", async () => {
@@ -424,8 +424,8 @@ describe("GitAdapter", () => {
     const result = await adapter.pull();
     expect(result.success).toBe(true);
 
-    await rm(bare, { recursive: true });
-    await rm(seed, { recursive: true });
+    await rm(bare, { recursive: true, maxRetries: 3, retryDelay: 100 });
+    await rm(seed, { recursive: true, maxRetries: 3, retryDelay: 100 });
   }, 20000);
 
   it("init accepts https:// URL (validation only)", async () => {
