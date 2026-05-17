@@ -1,7 +1,5 @@
 import { parseFrontmatter, stringifyFrontmatter } from "../lib/parser.js";
 import { CardStore } from "../lib/store.js";
-import { autoSync } from "../lib/sync.js";
-import { dirname } from "node:path";
 import { prepareMemexInput } from "../lib/sensitive-input.js";
 
 const REQUIRED_FIELDS = ["title", "created", "source"];
@@ -32,6 +30,5 @@ export async function writeCommand(store: CardStore, slug: string, input: string
 
   const output = stringifyFrontmatter(content, data);
   await store.writeCard(slug, output);
-  await autoSync(dirname(store.cardsDir));
   return { success: true, warnings: safety.warnings };
 }

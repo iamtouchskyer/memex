@@ -7279,475 +7279,6 @@ var init_parser = __esm({
   }
 });
 
-// src/lib/sync.ts
-import { readFile as readFile3, writeFile as writeFile2, mkdir as mkdir2, rename as rename2 } from "node:fs/promises";
-import { join as join3, dirname as dirname3 } from "node:path";
-import { execFile as execFileCb } from "node:child_process";
-import { promisify } from "node:util";
-import { randomBytes } from "node:crypto";
-async function readSyncConfig(home) {
-  try {
-    const raw = await readFile3(join3(home, CONFIG_FILE), "utf-8");
-    return JSON.parse(raw);
-  } catch {
-    return { adapter: "git", auto: false };
-  }
-}
-async function writeSyncConfig(home, config2) {
-  await mkdir2(home, { recursive: true });
-  const target = join3(home, CONFIG_FILE);
-  const tmp = target + "." + randomBytes(4).toString("hex") + ".tmp";
-  await writeFile2(tmp, JSON.stringify(config2, null, 2), "utf-8");
-  await rename2(tmp, target);
-}
-async function gitAvailable() {
-  try {
-    await execFile("git", ["--version"]);
-    return true;
-  } catch {
-    return false;
-  }
-}
-async function ghAvailable() {
-  try {
-    await execFile("gh", ["--version"]);
-    return true;
-  } catch {
-    return false;
-  }
-}
-async function detectRemoteBranch(home) {
-  try {
-    const { stdout } = await execFile("git", [
-      "-C",
-      home,
-      "rev-parse",
-      "--abbrev-ref",
-      "origin/HEAD"
-    ]);
-    const branch = stdout.trim();
-    if (branch && branch !== "origin/HEAD") return branch;
-  } catch {
-  }
-  for (const candidate of ["origin/main", "origin/master"]) {
-    try {
-      await execFile("git", ["-C", home, "rev-parse", "--verify", candidate]);
-      return candidate;
-    } catch {
-    }
-  }
-  return "origin/main";
-}
-async function autoSync(home) {
-  const config2 = await readSyncConfig(home);
-  if (!config2.auto || !config2.remote) return;
-  try {
-    const adapter = new GitAdapter(home);
-    await adapter.sync();
-  } catch (err) {
-    process.stderr.write(`sync warning: ${err.message}
-`);
-  }
-}
-async function autoFetch(home) {
-  const config2 = await readSyncConfig(home);
-  if (!config2.remote) return;
-  try {
-    const adapter = new GitAdapter(home);
-    await adapter.pull();
-  } catch {
-  }
-}
-var execFile, CONFIG_FILE, GitAdapter;
-var init_sync = __esm({
-  "src/lib/sync.ts"() {
-    "use strict";
-    execFile = promisify(execFileCb);
-    CONFIG_FILE = ".sync.json";
-    GitAdapter = class {
-      constructor(home) {
-        this.home = home;
-      }
-      home;
-      async init(remote) {
-        if (!await gitAvailable()) {
-          throw new Error("git is required for sync. Install git first.");
-        }
-        let url2 = remote;
-        if (url2) {
-          const isSchemeUrl = /^[a-z][a-z0-9+.-]*:\/\//i.test(url2);
-          const isSshUrl = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+:/.test(url2);
-          const isAbsolutePath = url2.startsWith("/") || /^[A-Za-z]:[\\\/]/.test(url2);
-          if (!isSchemeUrl && !isSshUrl && !isAbsolutePath) {
-            throw new Error(`Invalid remote URL: "${url2}". Expected a git URL (e.g. git@github.com:user/repo.git or https://github.com/user/repo.git) or an absolute path.`);
-          }
-        }
-        if (!url2) {
-          if (!await ghAvailable()) {
-            throw new Error(
-              "Provide a repo URL or install gh CLI (https://cli.github.com)."
-            );
-          }
-          try {
-            await execFile("gh", ["auth", "status"]);
-          } catch {
-            throw new Error(
-              "gh CLI is not authenticated. Run `gh auth login` first."
-            );
-          }
-          let ghUser;
-          try {
-            const { stdout: userOut } = await execFile("gh", [
-              "api",
-              "user",
-              "-q",
-              ".login"
-            ]);
-            ghUser = userOut.trim();
-          } catch {
-            throw new Error("Cannot determine GitHub username. Ensure `gh auth login` is complete.");
-          }
-          try {
-            const { stdout } = await execFile("gh", [
-              "repo",
-              "view",
-              `${ghUser}/memex-cards`,
-              "--json",
-              "url",
-              "-q",
-              ".url"
-            ]);
-            url2 = stdout.trim();
-          } catch {
-            const { stdout } = await execFile("gh", [
-              "repo",
-              "create",
-              "memex-cards",
-              "--private"
-            ]);
-            url2 = stdout.trim();
-          }
-          if (!url2) {
-            throw new Error("Failed to get repo URL from gh CLI.");
-          }
-        }
-        await mkdir2(join3(this.home, "cards"), { recursive: true });
-        try {
-          await execFile("git", ["-C", this.home, "rev-parse", "--git-dir"]);
-        } catch {
-          await execFile("git", ["init", this.home]);
-        }
-        await execFile("git", ["-C", this.home, "config", "core.autocrlf", "false"]);
-        const gitignorePath = join3(this.home, ".gitignore");
-        const ignoreEntries = [".sync.json", ".last-organize"];
-        try {
-          const existing = await readFile3(gitignorePath, "utf-8");
-          const missing = ignoreEntries.filter((e) => !existing.includes(e));
-          if (missing.length > 0) {
-            await writeFile2(gitignorePath, existing.trimEnd() + "\n" + missing.join("\n") + "\n", "utf-8");
-          }
-        } catch {
-          await writeFile2(gitignorePath, ignoreEntries.join("\n") + "\n", "utf-8");
-        }
-        try {
-          await execFile("git", ["-C", this.home, "remote", "add", "origin", url2]);
-        } catch (err) {
-          if (err.message?.includes("already exists")) {
-            await execFile("git", [
-              "-C",
-              this.home,
-              "remote",
-              "set-url",
-              "origin",
-              url2
-            ]);
-          } else {
-            throw err;
-          }
-        }
-        let targetBranch = "main";
-        try {
-          const { stdout } = await execFile("git", [
-            "-C",
-            this.home,
-            "ls-remote",
-            "--symref",
-            "origin",
-            "HEAD"
-          ]);
-          const match = stdout.match(/ref: refs\/heads\/(\S+)\s/);
-          if (match) {
-            targetBranch = match[1];
-          }
-        } catch {
-        }
-        try {
-          await execFile("git", [
-            "-C",
-            this.home,
-            "symbolic-ref",
-            "HEAD",
-            `refs/heads/${targetBranch}`
-          ]);
-        } catch {
-        }
-        await execFile("git", ["-C", this.home, "add", ".gitignore"]);
-        try {
-          await execFile("git", ["-C", this.home, "add", "cards"]);
-        } catch {
-        }
-        try {
-          await execFile("git", ["-C", this.home, "add", "archive"]);
-        } catch {
-        }
-        try {
-          await execFile("git", [
-            "-C",
-            this.home,
-            "commit",
-            "-m",
-            "memex: initial sync"
-          ]);
-        } catch {
-        }
-        let fetched = false;
-        try {
-          await execFile("git", ["-C", this.home, "fetch", "origin"]);
-          fetched = true;
-        } catch {
-        }
-        if (fetched) {
-          await this.normalizeBranch();
-          try {
-            const remoteBranch = await detectRemoteBranch(this.home);
-            await execFile("git", [
-              "-C",
-              this.home,
-              "rev-parse",
-              "--verify",
-              remoteBranch
-            ]);
-            try {
-              await execFile("git", [
-                "-C",
-                this.home,
-                "merge",
-                remoteBranch,
-                "--allow-unrelated-histories",
-                "--no-edit"
-              ]);
-            } catch (mergeErr) {
-              try {
-                await execFile("git", ["-C", this.home, "merge", "--abort"]);
-              } catch {
-              }
-              throw new Error(
-                `Merge conflict during init. Your local cards conflict with remote.
-Run: cd ${this.home} && git fetch origin && git merge origin/main --allow-unrelated-histories
-Then resolve conflicts and run \`memex sync --init\` again.`
-              );
-            }
-          } catch (err) {
-            if (err.message?.includes("Merge conflict")) throw err;
-          }
-        }
-        await execFile("git", ["-C", this.home, "push", "-u", "origin", "HEAD"]);
-        await writeSyncConfig(this.home, {
-          remote: url2,
-          adapter: "git",
-          auto: false
-        });
-        return url2;
-      }
-      /**
-       * Rename the local branch to match the remote's default branch,
-       * or fall back to "main" if the remote is empty.
-       */
-      async normalizeBranch() {
-        let target = "main";
-        try {
-          const { stdout } = await execFile("git", [
-            "-C",
-            this.home,
-            "ls-remote",
-            "--symref",
-            "origin",
-            "HEAD"
-          ]);
-          const match = stdout.match(/ref: refs\/heads\/(\S+)\s/);
-          if (match) {
-            target = match[1];
-          }
-        } catch {
-        }
-        try {
-          const { stdout } = await execFile("git", [
-            "-C",
-            this.home,
-            "rev-parse",
-            "--abbrev-ref",
-            "HEAD"
-          ]);
-          const current = stdout.trim();
-          if (current && current !== target) {
-            await execFile("git", ["-C", this.home, "branch", "-M", target]);
-          }
-        } catch {
-        }
-      }
-      async pull() {
-        const config2 = await readSyncConfig(this.home);
-        if (!config2.remote) {
-          return { success: false, message: "Not configured." };
-        }
-        try {
-          await execFile("git", ["-C", this.home, "fetch", "origin"]);
-        } catch {
-          return { success: true, message: "Offline, using local data." };
-        }
-        try {
-          const remoteBranch = await detectRemoteBranch(this.home);
-          await execFile("git", ["-C", this.home, "merge", remoteBranch, "--no-edit"]);
-        } catch {
-          const resolved = await this.autoResolveConflicts();
-          if (resolved.length > 0) {
-            return {
-              success: true,
-              message: `Pulled with conflicts auto-resolved. ${resolved.length} conflict file(s) saved: ${resolved.join(", ")}`
-            };
-          }
-          try {
-            await execFile("git", ["-C", this.home, "merge", "--abort"]);
-          } catch {
-          }
-          return {
-            success: false,
-            message: "Merge conflict. Run `cd " + this.home + " && git status` to see conflicting files, resolve them, then `git add . && git commit`."
-          };
-        }
-        return { success: true, message: "Pulled latest." };
-      }
-      /**
-       * Auto-resolve merge conflicts by keeping local (ours) and saving remote (theirs)
-       * as <slug>-conflict-<timestamp>.md. Returns list of conflict copy filenames.
-       * If any file cannot be resolved, aborts and returns empty array.
-       */
-      async autoResolveConflicts() {
-        let conflictFiles;
-        try {
-          const { stdout } = await execFile("git", [
-            "-C",
-            this.home,
-            "diff",
-            "--name-only",
-            "--diff-filter=U"
-          ]);
-          conflictFiles = stdout.trim().split("\n").filter(Boolean);
-        } catch {
-          return [];
-        }
-        if (conflictFiles.length === 0) return [];
-        const timestamp = (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace(/[T:]/g, "-");
-        const conflictCopies = [];
-        for (const relPath of conflictFiles) {
-          if (!relPath.endsWith(".md") || !(relPath.startsWith("cards/") || relPath.startsWith("archive/"))) {
-            return [];
-          }
-          try {
-            const { stdout: theirsContent } = await execFile("git", [
-              "-C",
-              this.home,
-              "show",
-              `:3:${relPath}`
-            ]);
-            const conflictName = relPath.replace(/\.md$/, `-conflict-${timestamp}.md`);
-            const conflictPath = join3(this.home, conflictName);
-            await mkdir2(dirname3(conflictPath), { recursive: true });
-            await writeFile2(conflictPath, theirsContent, "utf-8");
-            conflictCopies.push(conflictName);
-          } catch {
-          }
-          try {
-            await execFile("git", ["-C", this.home, "checkout", "--ours", relPath]);
-            await execFile("git", ["-C", this.home, "add", relPath]);
-          } catch {
-            return [];
-          }
-        }
-        try {
-          for (const copy of conflictCopies) {
-            await execFile("git", ["-C", this.home, "add", copy]);
-          }
-          await execFile("git", ["-C", this.home, "commit", "--no-edit"]);
-        } catch {
-          return [];
-        }
-        return conflictCopies;
-      }
-      async push() {
-        const config2 = await readSyncConfig(this.home);
-        if (!config2.remote) {
-          return { success: false, message: "Not configured." };
-        }
-        try {
-          await execFile("git", ["-C", this.home, "add", "cards"]);
-        } catch {
-        }
-        try {
-          await execFile("git", ["-C", this.home, "add", "archive"]);
-        } catch {
-        }
-        try {
-          const ts = (/* @__PURE__ */ new Date()).toISOString();
-          await execFile("git", ["-C", this.home, "commit", "-m", `memex sync ${ts}`]);
-        } catch {
-        }
-        try {
-          await execFile("git", ["-C", this.home, "push", "origin", "HEAD"]);
-        } catch (err) {
-          return { success: false, message: `Push failed: ${err.message}` };
-        }
-        config2.lastSync = (/* @__PURE__ */ new Date()).toISOString();
-        await writeSyncConfig(this.home, config2);
-        return { success: true, message: "Pushed." };
-      }
-      async sync() {
-        const pullResult = await this.pull();
-        if (!pullResult.success) return pullResult;
-        return this.push();
-      }
-      async status() {
-        const config2 = await readSyncConfig(this.home);
-        let remote = config2.remote;
-        if (!remote) {
-          try {
-            const { stdout } = await execFile("git", [
-              "-C",
-              this.home,
-              "remote",
-              "get-url",
-              "origin"
-            ]);
-            remote = stdout.trim() || void 0;
-            if (remote) {
-              config2.remote = remote;
-              await writeSyncConfig(this.home, config2);
-            }
-          } catch {
-          }
-        }
-        return {
-          configured: !!remote,
-          remote,
-          adapter: config2.adapter,
-          auto: config2.auto,
-          lastSync: config2.lastSync
-        };
-      }
-    };
-  }
-});
-
 // src/lib/sensitive-input.ts
 function prepareMemexInput(text, context) {
   const warnings = [];
@@ -7881,19 +7412,22 @@ var init_sensitive_input = __esm({
     JWT_RE = /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g;
     BEARER_RE = /\bAuthorization\s*:\s*Bearer\s+([^\s<>'")]{30,})/gi;
     ENV_ASSIGNMENT_RE = /^\s*(?:export\s+)?([A-Z0-9_]*(?:API|TOKEN|SECRET|PASSWORD|PRIVATE|CREDENTIAL|AUTH|KEY)[A-Z0-9_]*)\s*=\s*([^\n#]+)/gim;
-    SECRET_LOCATOR_RE = /(^|[\s"'`(])(?:~\/\.(?:claude|aws|config|ssh)(?:\/[^\s"'`)]+)?|\.env(?:\.[A-Za-z0-9_-]+)?)(?=$|[\s"'`)])/i;
+    SECRET_LOCATOR_RE = /(^|[\s"'`(])(?:~\/\.(?:claude|aws|config|ssh|netrc|npmrc|docker|kube)(?:\/[^\s"'`)]+)?|\.env(?:\.[A-Za-z0-9_-]+)?)(?=$|[\s"'`)])/i;
     KNOWN_SECRET_RES = [
       /\bsk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{20,}\b/g,
       /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{30,}\b/g,
       /\bglpat-[A-Za-z0-9_-]{20,}\b/g,
       /\bxox[baprs]-[A-Za-z0-9-]{20,}\b/g,
+      /\bAKIA[0-9A-Z]{16}\b/g,
+      /\bAIza[0-9A-Za-z_-]{35}\b/g,
+      /\b[sr]k_(?:live|test)_[A-Za-z0-9]{24,}\b/g,
+      /\bnpm_[A-Za-z0-9]{36}\b/g,
       JWT_RE
     ];
   }
 });
 
 // src/commands/write.ts
-import { dirname as dirname4 } from "node:path";
 async function writeCommand(store, slug, input) {
   const safety = prepareMemexInput(input, "content");
   if (!safety.ok) return { success: false, error: safety.error };
@@ -7909,7 +7443,6 @@ async function writeCommand(store, slug, input) {
   }
   const output = stringifyFrontmatter(content, data);
   await store.writeCard(slug, output);
-  await autoSync(dirname4(store.cardsDir));
   return { success: true, warnings: safety.warnings };
 }
 var REQUIRED_FIELDS;
@@ -7917,7 +7450,6 @@ var init_write = __esm({
   "src/commands/write.ts"() {
     "use strict";
     init_parser();
-    init_sync();
     init_sensitive_input();
     REQUIRED_FIELDS = ["title", "created", "source"];
   }
@@ -7991,10 +7523,10 @@ var init_formatter = __esm({
 // src/lib/embeddings.ts
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { readFile as readFile4, writeFile as writeFile3, mkdir as mkdir3 } from "node:fs/promises";
+import { readFile as readFile3, writeFile as writeFile2, mkdir as mkdir2 } from "node:fs/promises";
 import { request as httpsRequest } from "node:https";
 import { request as httpRequest } from "node:http";
-import { join as join4, dirname as dirname5 } from "node:path";
+import { join as join3, dirname as dirname3 } from "node:path";
 import { homedir as homedir2 } from "node:os";
 function embeddingsPath(basePath) {
   if (!basePath || basePath === "/") return "/v1/embeddings";
@@ -8004,7 +7536,7 @@ function embeddingsPath(basePath) {
 function resolveHomePath(path) {
   if (path === "~") return homedir2();
   if (path.startsWith("~/") || path.startsWith("~\\")) {
-    return join4(homedir2(), path.slice(2));
+    return join3(homedir2(), path.slice(2));
   }
   return path;
 }
@@ -8033,7 +7565,7 @@ function resolveAzureApiKey(apiKey, apiKeyPath) {
   if (apiKey) return apiKey;
   if (apiKeyPath) return readKeyFile(apiKeyPath);
   return process.env.AZURE_OPENAI_API_KEY ?? process.env.MEMEX_AZURE_OPENAI_API_KEY ?? readKeyFile(
-    process.env.AZURE_OPENAI_API_KEY_FILE ?? process.env.MEMEX_AZURE_OPENAI_API_KEY_FILE ?? join4(homedir2(), ".azure_api_key")
+    process.env.AZURE_OPENAI_API_KEY_FILE ?? process.env.MEMEX_AZURE_OPENAI_API_KEY_FILE ?? join3(homedir2(), ".azure_api_key")
   );
 }
 function resolveAzureEndpoint(endpoint) {
@@ -8466,7 +7998,7 @@ var init_embeddings = __esm({
       constructor(memexHome, cacheModel) {
         this.memexHome = memexHome;
         this.cacheModel = cacheModel;
-        this.filePath = join4(
+        this.filePath = join3(
           memexHome,
           ".memex",
           "embeddings",
@@ -8480,7 +8012,7 @@ var init_embeddings = __esm({
       filePath;
       async load() {
         try {
-          const raw = await readFile4(this.filePath, "utf-8");
+          const raw = await readFile3(this.filePath, "utf-8");
           const parsed = JSON.parse(raw);
           if (parsed.model === this.cacheModel && parsed.version === 1) {
             this.data = parsed;
@@ -8489,8 +8021,8 @@ var init_embeddings = __esm({
         }
       }
       async save() {
-        await mkdir3(dirname5(this.filePath), { recursive: true });
-        await writeFile3(this.filePath, JSON.stringify(this.data, null, 2), "utf-8");
+        await mkdir2(dirname3(this.filePath), { recursive: true });
+        await writeFile2(this.filePath, JSON.stringify(this.data, null, 2), "utf-8");
       }
       get(slug) {
         return this.data.entries[slug];
@@ -8518,7 +8050,7 @@ var init_embeddings = __esm({
 });
 
 // src/commands/search.ts
-import { join as join5 } from "node:path";
+import { join as join4 } from "node:path";
 async function searchCommand(store, query, options2 = {}) {
   const safety = query ? prepareMemexInput(query, "query") : { ok: true, text: query ?? "", warnings: [] };
   if (!safety.ok) return { output: safety.error ?? "Sensitive input rejected.", exitCode: 1 };
@@ -8527,9 +8059,9 @@ async function searchCommand(store, query, options2 = {}) {
     { store, dirPrefix: "cards" }
   ];
   if (options2.all && options2.config?.searchDirs && options2.config.searchDirs.length > 0 && options2.memexHome) {
-    const archiveDir = join5(options2.memexHome, "archive");
+    const archiveDir = join4(options2.memexHome, "archive");
     for (const searchDir of options2.config.searchDirs) {
-      const fullPath = join5(options2.memexHome, searchDir);
+      const fullPath = join4(options2.memexHome, searchDir);
       const additionalStore = new CardStore(fullPath, archiveDir, store["nestedSlugs"]);
       const dirName = searchDir.split("/").pop() || searchDir;
       storesToSearch.push({ store: additionalStore, dirPrefix: dirName });
@@ -8804,7 +8336,7 @@ var init_search = __esm({
 
 // src/lib/scan.ts
 import { readdir as readdir3 } from "node:fs/promises";
-import { join as join6, basename as basename2 } from "node:path";
+import { join as join5, basename as basename2 } from "node:path";
 async function scanMarkdownFiles(dir) {
   const results = [];
   async function walk(d) {
@@ -8815,7 +8347,7 @@ async function scanMarkdownFiles(dir) {
       return;
     }
     for (const entry of entries) {
-      const fullPath = join6(d, entry.name);
+      const fullPath = join5(d, entry.name);
       if (entry.isDirectory()) {
         await walk(fullPath);
       } else if (entry.isFile() && entry.name.endsWith(".md")) {
@@ -8833,8 +8365,8 @@ var init_scan = __esm({
 });
 
 // src/commands/links.ts
-import { join as join7, resolve as resolve2 } from "node:path";
-import { readFile as readFile5 } from "node:fs/promises";
+import { join as join6, resolve as resolve2 } from "node:path";
+import { readFile as readFile4 } from "node:fs/promises";
 async function linksCommand(store, slug, opts) {
   const cards = await store.scanAll();
   if (cards.length === 0) return { output: "", exitCode: 0 };
@@ -8858,11 +8390,11 @@ async function linksCommand(store, slug, opts) {
   }
   if (opts?.home && opts?.extraLinkDirs && opts.extraLinkDirs.length > 0) {
     for (const dirName of opts.extraLinkDirs) {
-      const extraDir = resolve2(join7(opts.home, dirName));
+      const extraDir = resolve2(join6(opts.home, dirName));
       if (extraDir === resolve2(store.cardsDir)) continue;
       const extraFiles = await scanMarkdownFiles(extraDir);
       for (const file2 of extraFiles) {
-        const raw = await readFile5(file2.path, "utf-8");
+        const raw = await readFile4(file2.path, "utf-8");
         const { content } = parseFrontmatter(raw);
         const links = extractLinks(content);
         for (const link of links) {
@@ -8951,12 +8483,491 @@ var init_links = __esm({
   }
 });
 
+// src/lib/sync.ts
+import { readFile as readFile5, writeFile as writeFile3, mkdir as mkdir3, rename as rename2 } from "node:fs/promises";
+import { join as join7, dirname as dirname4 } from "node:path";
+import { execFile as execFileCb } from "node:child_process";
+import { promisify } from "node:util";
+import { randomBytes } from "node:crypto";
+async function execGitFile(args) {
+  return execFile("git", args, { timeout: GIT_TIMEOUT, env: GIT_ENV });
+}
+async function readSyncConfig(home) {
+  try {
+    const raw = await readFile5(join7(home, CONFIG_FILE), "utf-8");
+    return JSON.parse(raw);
+  } catch {
+    return { adapter: "git", auto: false };
+  }
+}
+async function writeSyncConfig(home, config2) {
+  await mkdir3(home, { recursive: true });
+  const target = join7(home, CONFIG_FILE);
+  const tmp = target + "." + randomBytes(4).toString("hex") + ".tmp";
+  await writeFile3(tmp, JSON.stringify(config2, null, 2), "utf-8");
+  await rename2(tmp, target);
+}
+async function gitAvailable() {
+  try {
+    await execFile("git", ["--version"]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function ghAvailable() {
+  try {
+    await execFile("gh", ["--version"]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+async function detectRemoteBranch(home) {
+  try {
+    const { stdout } = await execGitFile([
+      "-C",
+      home,
+      "rev-parse",
+      "--abbrev-ref",
+      "origin/HEAD"
+    ]);
+    const branch = stdout.trim();
+    if (branch && branch !== "origin/HEAD") return branch;
+  } catch {
+  }
+  for (const candidate of ["origin/main", "origin/master"]) {
+    try {
+      await execGitFile(["-C", home, "rev-parse", "--verify", candidate]);
+      return candidate;
+    } catch {
+    }
+  }
+  return "origin/main";
+}
+async function autoSync(home) {
+  const config2 = await readSyncConfig(home);
+  if (!config2.auto || !config2.remote) return;
+  try {
+    const adapter = new GitAdapter(home);
+    await adapter.sync();
+  } catch (err) {
+    process.stderr.write(`sync warning: ${err.message}
+`);
+  }
+}
+async function autoFetch(home) {
+  const config2 = await readSyncConfig(home);
+  if (!config2.remote) return;
+  try {
+    const adapter = new GitAdapter(home);
+    await adapter.pull();
+  } catch {
+  }
+}
+var execFile, GIT_TIMEOUT, GIT_ENV, CONFIG_FILE, GitAdapter;
+var init_sync = __esm({
+  "src/lib/sync.ts"() {
+    "use strict";
+    execFile = promisify(execFileCb);
+    GIT_TIMEOUT = 15e3;
+    GIT_ENV = {
+      ...process.env,
+      GIT_TERMINAL_PROMPT: "0",
+      GCM_INTERACTIVE: "Never",
+      GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND || "ssh -o BatchMode=yes -o ConnectTimeout=10"
+    };
+    CONFIG_FILE = ".sync.json";
+    GitAdapter = class {
+      constructor(home) {
+        this.home = home;
+      }
+      home;
+      async init(remote) {
+        if (!await gitAvailable()) {
+          throw new Error("git is required for sync. Install git first.");
+        }
+        let url2 = remote;
+        if (url2) {
+          const isSchemeUrl = /^[a-z][a-z0-9+.-]*:\/\//i.test(url2);
+          const isSshUrl = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+:/.test(url2);
+          const isAbsolutePath = url2.startsWith("/") || /^[A-Za-z]:[\\\/]/.test(url2);
+          if (!isSchemeUrl && !isSshUrl && !isAbsolutePath) {
+            throw new Error(`Invalid remote URL: "${url2}". Expected a git URL (e.g. git@github.com:user/repo.git or https://github.com/user/repo.git) or an absolute path.`);
+          }
+        }
+        if (!url2) {
+          if (!await ghAvailable()) {
+            throw new Error(
+              "Provide a repo URL or install gh CLI (https://cli.github.com)."
+            );
+          }
+          try {
+            await execFile("gh", ["auth", "status"]);
+          } catch {
+            throw new Error(
+              "gh CLI is not authenticated. Run `gh auth login` first."
+            );
+          }
+          let ghUser;
+          try {
+            const { stdout: userOut } = await execFile("gh", [
+              "api",
+              "user",
+              "-q",
+              ".login"
+            ]);
+            ghUser = userOut.trim();
+          } catch {
+            throw new Error("Cannot determine GitHub username. Ensure `gh auth login` is complete.");
+          }
+          try {
+            const { stdout } = await execFile("gh", [
+              "repo",
+              "view",
+              `${ghUser}/memex-cards`,
+              "--json",
+              "url",
+              "-q",
+              ".url"
+            ]);
+            url2 = stdout.trim();
+          } catch {
+            const { stdout } = await execFile("gh", [
+              "repo",
+              "create",
+              "memex-cards",
+              "--private"
+            ]);
+            url2 = stdout.trim();
+          }
+          if (!url2) {
+            throw new Error("Failed to get repo URL from gh CLI.");
+          }
+        }
+        await mkdir3(join7(this.home, "cards"), { recursive: true });
+        try {
+          await execGitFile(["-C", this.home, "rev-parse", "--git-dir"]);
+        } catch {
+          await execGitFile(["init", this.home]);
+        }
+        await execGitFile(["-C", this.home, "config", "core.autocrlf", "false"]);
+        const gitignorePath = join7(this.home, ".gitignore");
+        const ignoreEntries = [".sync.json", ".last-organize"];
+        try {
+          const existing = await readFile5(gitignorePath, "utf-8");
+          const missing = ignoreEntries.filter((e) => !existing.includes(e));
+          if (missing.length > 0) {
+            await writeFile3(gitignorePath, existing.trimEnd() + "\n" + missing.join("\n") + "\n", "utf-8");
+          }
+        } catch {
+          await writeFile3(gitignorePath, ignoreEntries.join("\n") + "\n", "utf-8");
+        }
+        try {
+          await execGitFile(["-C", this.home, "remote", "add", "origin", url2]);
+        } catch (err) {
+          if (err.message?.includes("already exists")) {
+            await execGitFile([
+              "-C",
+              this.home,
+              "remote",
+              "set-url",
+              "origin",
+              url2
+            ]);
+          } else {
+            throw err;
+          }
+        }
+        let targetBranch = "main";
+        try {
+          const { stdout } = await execGitFile([
+            "-C",
+            this.home,
+            "ls-remote",
+            "--symref",
+            "origin",
+            "HEAD"
+          ]);
+          const match = stdout.match(/ref: refs\/heads\/(\S+)\s/);
+          if (match) {
+            targetBranch = match[1];
+          }
+        } catch {
+        }
+        try {
+          await execGitFile([
+            "-C",
+            this.home,
+            "symbolic-ref",
+            "HEAD",
+            `refs/heads/${targetBranch}`
+          ]);
+        } catch {
+        }
+        await execGitFile(["-C", this.home, "add", ".gitignore"]);
+        try {
+          await execGitFile(["-C", this.home, "add", "cards"]);
+        } catch {
+        }
+        try {
+          await execGitFile(["-C", this.home, "add", "archive"]);
+        } catch {
+        }
+        try {
+          await execGitFile([
+            "-C",
+            this.home,
+            "commit",
+            "-m",
+            "memex: initial sync"
+          ]);
+        } catch {
+        }
+        let fetched = false;
+        try {
+          await execGitFile(["-C", this.home, "fetch", "origin"]);
+          fetched = true;
+        } catch {
+        }
+        if (fetched) {
+          await this.normalizeBranch();
+          try {
+            const remoteBranch = await detectRemoteBranch(this.home);
+            await execGitFile([
+              "-C",
+              this.home,
+              "rev-parse",
+              "--verify",
+              remoteBranch
+            ]);
+            try {
+              await execGitFile([
+                "-C",
+                this.home,
+                "merge",
+                remoteBranch,
+                "--allow-unrelated-histories",
+                "--no-edit"
+              ]);
+            } catch (mergeErr) {
+              try {
+                await execGitFile(["-C", this.home, "merge", "--abort"]);
+              } catch {
+              }
+              throw new Error(
+                `Merge conflict during init. Your local cards conflict with remote.
+Run: cd ${this.home} && git fetch origin && git merge origin/main --allow-unrelated-histories
+Then resolve conflicts and run \`memex sync --init\` again.`
+              );
+            }
+          } catch (err) {
+            if (err.message?.includes("Merge conflict")) throw err;
+          }
+        }
+        await execGitFile(["-C", this.home, "push", "-u", "origin", "HEAD"]);
+        await writeSyncConfig(this.home, {
+          remote: url2,
+          adapter: "git",
+          auto: false
+        });
+        return url2;
+      }
+      /**
+       * Rename the local branch to match the remote's default branch,
+       * or fall back to "main" if the remote is empty.
+       */
+      async normalizeBranch() {
+        let target = "main";
+        try {
+          const { stdout } = await execGitFile([
+            "-C",
+            this.home,
+            "ls-remote",
+            "--symref",
+            "origin",
+            "HEAD"
+          ]);
+          const match = stdout.match(/ref: refs\/heads\/(\S+)\s/);
+          if (match) {
+            target = match[1];
+          }
+        } catch {
+        }
+        try {
+          const { stdout } = await execGitFile([
+            "-C",
+            this.home,
+            "rev-parse",
+            "--abbrev-ref",
+            "HEAD"
+          ]);
+          const current = stdout.trim();
+          if (current && current !== target) {
+            await execGitFile(["-C", this.home, "branch", "-M", target]);
+          }
+        } catch {
+        }
+      }
+      async pull() {
+        const config2 = await readSyncConfig(this.home);
+        if (!config2.remote) {
+          return { success: false, message: "Not configured." };
+        }
+        try {
+          await execGitFile(["-C", this.home, "fetch", "origin"]);
+        } catch {
+          return { success: true, message: "Offline, using local data." };
+        }
+        try {
+          const remoteBranch = await detectRemoteBranch(this.home);
+          await execGitFile(["-C", this.home, "merge", remoteBranch, "--no-edit"]);
+        } catch {
+          const resolved = await this.autoResolveConflicts();
+          if (resolved.length > 0) {
+            return {
+              success: true,
+              message: `Pulled with conflicts auto-resolved. ${resolved.length} conflict file(s) saved: ${resolved.join(", ")}`
+            };
+          }
+          try {
+            await execGitFile(["-C", this.home, "merge", "--abort"]);
+          } catch {
+          }
+          return {
+            success: false,
+            message: "Merge conflict. Run `cd " + this.home + " && git status` to see conflicting files, resolve them, then `git add . && git commit`."
+          };
+        }
+        return { success: true, message: "Pulled latest." };
+      }
+      /**
+       * Auto-resolve merge conflicts by keeping local (ours) and saving remote (theirs)
+       * as <slug>-conflict-<timestamp>.md. Returns list of conflict copy filenames.
+       * If any file cannot be resolved, aborts and returns empty array.
+       */
+      async autoResolveConflicts() {
+        let conflictFiles;
+        try {
+          const { stdout } = await execGitFile([
+            "-C",
+            this.home,
+            "diff",
+            "--name-only",
+            "--diff-filter=U"
+          ]);
+          conflictFiles = stdout.trim().split("\n").filter(Boolean);
+        } catch {
+          return [];
+        }
+        if (conflictFiles.length === 0) return [];
+        const timestamp = (/* @__PURE__ */ new Date()).toISOString().slice(0, 19).replace(/[T:]/g, "-");
+        const conflictCopies = [];
+        for (const relPath of conflictFiles) {
+          if (!relPath.endsWith(".md") || !(relPath.startsWith("cards/") || relPath.startsWith("archive/"))) {
+            return [];
+          }
+          try {
+            const { stdout: theirsContent } = await execGitFile([
+              "-C",
+              this.home,
+              "show",
+              `:3:${relPath}`
+            ]);
+            const conflictName = relPath.replace(/\.md$/, `-conflict-${timestamp}.md`);
+            const conflictPath = join7(this.home, conflictName);
+            await mkdir3(dirname4(conflictPath), { recursive: true });
+            await writeFile3(conflictPath, theirsContent, "utf-8");
+            conflictCopies.push(conflictName);
+          } catch {
+          }
+          try {
+            await execGitFile(["-C", this.home, "checkout", "--ours", relPath]);
+            await execGitFile(["-C", this.home, "add", relPath]);
+          } catch {
+            return [];
+          }
+        }
+        try {
+          for (const copy of conflictCopies) {
+            await execGitFile(["-C", this.home, "add", copy]);
+          }
+          await execGitFile(["-C", this.home, "commit", "--no-edit"]);
+        } catch {
+          return [];
+        }
+        return conflictCopies;
+      }
+      async push() {
+        const config2 = await readSyncConfig(this.home);
+        if (!config2.remote) {
+          return { success: false, message: "Not configured." };
+        }
+        try {
+          await execGitFile(["-C", this.home, "add", "cards"]);
+        } catch {
+        }
+        try {
+          await execGitFile(["-C", this.home, "add", "archive"]);
+        } catch {
+        }
+        try {
+          const ts = (/* @__PURE__ */ new Date()).toISOString();
+          await execGitFile(["-C", this.home, "commit", "-m", `memex sync ${ts}`]);
+        } catch {
+        }
+        try {
+          await execGitFile(["-C", this.home, "push", "origin", "HEAD"]);
+        } catch (err) {
+          return { success: false, message: `Push failed: ${err.message}` };
+        }
+        config2.lastSync = (/* @__PURE__ */ new Date()).toISOString();
+        await writeSyncConfig(this.home, config2);
+        return { success: true, message: "Pushed." };
+      }
+      async sync() {
+        const pullResult = await this.pull();
+        if (!pullResult.success) return pullResult;
+        return this.push();
+      }
+      async status() {
+        const config2 = await readSyncConfig(this.home);
+        let remote = config2.remote;
+        if (!remote) {
+          try {
+            const { stdout } = await execGitFile([
+              "-C",
+              this.home,
+              "remote",
+              "get-url",
+              "origin"
+            ]);
+            remote = stdout.trim() || void 0;
+            if (remote) {
+              config2.remote = remote;
+              await writeSyncConfig(this.home, config2);
+            }
+          } catch {
+          }
+        }
+        return {
+          configured: !!remote,
+          remote,
+          adapter: config2.adapter,
+          auto: config2.auto,
+          lastSync: config2.lastSync
+        };
+      }
+    };
+  }
+});
+
 // src/commands/archive.ts
-import { dirname as dirname6 } from "node:path";
+import { dirname as dirname5 } from "node:path";
 async function archiveCommand(store, slug) {
   try {
     await store.archiveCard(slug);
-    await autoSync(dirname6(store.cardsDir));
+    await autoSync(dirname5(store.cardsDir));
     return { success: true };
   } catch (e) {
     return { success: false, error: e.message };
@@ -9106,7 +9117,7 @@ var init_organize = __esm({
 
 // src/commands/flomo.ts
 import { readFile as readFile9, writeFile as writeFile5 } from "node:fs/promises";
-import { join as join14, dirname as dirname8 } from "node:path";
+import { join as join14, dirname as dirname7 } from "node:path";
 function isValidFlomoWebhookUrl(url2) {
   try {
     const parsed = new URL(url2);
@@ -9327,7 +9338,7 @@ async function flomoImportCommand(store, filePath, opts) {
     created++;
   }
   if (!opts.dryRun && created > 0) {
-    await autoSync(dirname8(store.cardsDir));
+    await autoSync(dirname7(store.cardsDir));
   }
   lines.push("");
   const prefix = opts.dryRun ? "[dry-run] " : "";
@@ -9378,7 +9389,7 @@ async function flomoPushCommand(store, memexHome, slugOrOpts, opts) {
     results.push(result);
   }
   if (!dryRun && results.some((r) => r.status === "pushed")) {
-    await autoSync(dirname8(store.cardsDir));
+    await autoSync(dirname7(store.cardsDir));
   }
   const pushed = results.filter((r) => r.status === "pushed").length;
   const skipped = results.filter((r) => r.status === "skipped").length;
@@ -40689,7 +40700,7 @@ __export(server_exports, {
   createMemexServer: () => createMemexServer
 });
 import { existsSync as existsSync2, readFileSync as readFileSync2 } from "node:fs";
-import { join as join15, dirname as dirname9 } from "node:path";
+import { join as join15, dirname as dirname8 } from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 function readPackageJson(startDir) {
   let dir = startDir;
@@ -40699,7 +40710,7 @@ function readPackageJson(startDir) {
       const pkg3 = JSON.parse(readFileSync2(path, "utf-8"));
       if (pkg3.name === "@touchskyer/memex") return pkg3;
     }
-    const parent = dirname9(dir);
+    const parent = dirname8(dir);
     if (parent === dir) break;
     dir = parent;
   }
@@ -40830,7 +40841,7 @@ var init_server3 = __esm({
     init_operations();
     init_sensitive_input();
     init_zod();
-    __dirname2 = dirname9(fileURLToPath2(import.meta.url));
+    __dirname2 = dirname8(fileURLToPath2(import.meta.url));
     pkg = readPackageJson(__dirname2);
   }
 });
@@ -40966,7 +40977,7 @@ init_read();
 init_search();
 init_links();
 init_archive();
-import { join as join16, dirname as dirname10 } from "node:path";
+import { join as join16, dirname as dirname9 } from "node:path";
 import { readFileSync as readFileSync3 } from "node:fs";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 
@@ -40979,7 +40990,7 @@ import { createServer } from "node:http";
 import { join as join8 } from "node:path";
 import { readFile as readFile6, access as access2 } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { dirname as dirname7 } from "node:path";
+import { dirname as dirname6 } from "node:path";
 import { execFile as execFile2 } from "node:child_process";
 function toDateString2(val) {
   if (!val) return "";
@@ -40989,7 +41000,7 @@ function toDateString2(val) {
   return m ? m[0] : s;
 }
 var __filename = fileURLToPath(import.meta.url);
-var __dirname = dirname7(__filename);
+var __dirname = dirname6(__filename);
 async function resolveAsset(name, ...candidates) {
   for (const p of candidates) {
     try {
@@ -41793,7 +41804,7 @@ ${lines.join("\n")}`;
 // src/cli.ts
 init_organize();
 init_flomo();
-var __dirname3 = dirname10(fileURLToPath3(import.meta.url));
+var __dirname3 = dirname9(fileURLToPath3(import.meta.url));
 var pkg2 = JSON.parse(readFileSync3(join16(__dirname3, "..", "package.json"), "utf-8"));
 async function getStore(opts) {
   const home = await resolveMemexHome();

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -116,5 +116,22 @@ Remote: https://user:secret1234567890@github.com/org/repo.git`;
     const written = await readFile(join(tmpDir, "cards", "remote.md"), "utf-8");
     expect(written).toContain("https://user:<redacted>@github.com/org/repo.git");
     expect(written).not.toContain("secret1234567890");
+  });
+
+  it("does not call autoSync", async () => {
+    const syncMod = await import("../../src/lib/sync.js");
+    const spy = vi.spyOn(syncMod, "autoSync");
+
+    const input = `---
+title: No Sync
+created: 2026-03-18
+source: retro
+---
+
+Body.`;
+
+    await writeCommand(store, "no-sync", input);
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 });
