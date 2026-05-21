@@ -177,6 +177,109 @@ describe("High-level operations", () => {
     expect(text).toContain("[[card-a]]");
   });
 
+  it("memex_recall with category filter returns matching cards", async () => {
+    await setup({
+      "auth-card": "---\ntitle: Auth Flow\ncreated: 2026-01-01\ncategory: security\nsource: claude-code\n---\nJWT authentication",
+      "deploy-card": "---\ntitle: Deploy Guide\ncreated: 2026-01-01\ncategory: devops\nsource: claude-code\n---\nCI/CD pipeline",
+    });
+    const result = await client.callTool({
+      name: "memex_recall",
+      arguments: { category: "security" },
+    });
+    const text = (result.content as Array<{ text: string }>)[0].text;
+    expect(text).toContain("auth-card");
+    expect(text).not.toContain("deploy-card");
+  });
+
+  it("memex_recall with tag filter returns matching cards", async () => {
+    await setup({
+      "tagged-card": "---\ntitle: Tagged\ncreated: 2026-01-01\ntags: [rust, performance]\nsource: claude-code\n---\nContent",
+      "untagged-card": "---\ntitle: Untagged\ncreated: 2026-01-01\nsource: claude-code\n---\nOther content",
+    });
+    const result = await client.callTool({
+      name: "memex_recall",
+      arguments: { tag: "rust" },
+    });
+    const text = (result.content as Array<{ text: string }>)[0].text;
+    expect(text).toContain("tagged-card");
+    expect(text).not.toContain("untagged-card");
+  });
+
+  it("memex_recall with query + filter combines both", async () => {
+    await setup({
+      "sec-jwt": "---\ntitle: JWT Auth\ncreated: 2026-01-01\ncategory: security\nsource: claude-code\n---\nJWT token rotation",
+      "arch-jwt": "---\ntitle: JWT Architecture\ncreated: 2026-01-01\ncategory: architecture\nsource: claude-code\n---\nJWT signing keys",
+    });
+    const result = await client.callTool({
+      name: "memex_recall",
+      arguments: { query: "JWT", category: "security" },
+    });
+    const text = (result.content as Array<{ text: string }>)[0].text;
+    expect(text).toContain("sec-jwt");
+    expect(text).not.toContain("arch-jwt");
+  });
+
+  it("memex_recall with since filter returns recent cards only", async () => {
+    await setup({
+      "old-card": "---\ntitle: Old\ncreated: 2025-01-01\nsource: claude-code\n---\nOld content",
+      "new-card": "---\ntitle: New\ncreated: 2026-05-01\nsource: claude-code\n---\nNew content",
+    });
+    const result = await client.callTool({
+      name: "memex_recall",
+      arguments: { since: "2026-01-01" },
+    });
+    const text = (result.content as Array<{ text: string }>)[0].text;
+    expect(text).toContain("new-card");
+    expect(text).not.toContain("old-card");
+  });
+
+  it("memex_recall with before filter returns older cards only", async () => {
+    await setup({
+      "old-card": "---\ntitle: Old\ncreated: 2025-06-01\nsource: claude-code\n---\nOld content",
+      "new-card": "---\ntitle: New\ncreated: 2026-05-01\nsource: claude-code\n---\nNew content",
+    });
+    const result = await client.callTool({
+      name: "memex_recall",
+      arguments: { before: "2026-01-01" },
+    });
+    const text = (result.content as Array<{ text: string }>)[0].text;
+    expect(text).toContain("old-card");
+    expect(text).not.toContain("new-card");
+  });
+
+  it("flomo_import_parse rejects non-HTML files", async () => {
+    await setup();
+    const result = await client.callTool({
+      name: "flomo_import_parse",
+      arguments: { file_path: "/tmp/data.json" },
+    });
+    expect(result.isError).toBe(true);
+    const text = (result.content as Array<{ text: string }>)[0].text;
+    expect(text).toContain("Only .html and .htm files");
+  });
+
+  it("flomo_import_parse rejects path with null bytes", async () => {
+    await setup();
+    const result = await client.callTool({
+      name: "flomo_import_parse",
+      arguments: { file_path: "/tmp/data\0.html" },
+    });
+    expect(result.isError).toBe(true);
+    const text = (result.content as Array<{ text: string }>)[0].text;
+    expect(text).toContain("Invalid file path");
+  });
+
+  it("flomo_import_parse rejects non-existent file", async () => {
+    await setup();
+    const result = await client.callTool({
+      name: "flomo_import_parse",
+      arguments: { file_path: "/tmp/nonexistent-memex-test.html" },
+    });
+    expect(result.isError).toBe(true);
+    const text = (result.content as Array<{ text: string }>)[0].text;
+    expect(text).toContain("Cannot read file");
+  });
+
   it("has all expected high-level tools", async () => {
     await setup();
     const { tools } = await client.listTools();
