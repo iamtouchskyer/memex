@@ -95,14 +95,30 @@ export function registerOperations(
 
     await hooks.run("post", "retro");
 
-    // Upsell sync if not configured
+    // Surface sync status (autoSync was already triggered by hook above)
     const config = await readSyncConfig(home);
-    const tip = !config.remote
-      ? "\n\nTip: To sync cards across devices, tell the user to run in terminal: npx @touchskyer/memex sync --init && npx @touchskyer/memex sync on"
-      : "";
+    let syncInfo = "";
+    if (!config.remote) {
+      syncInfo = "\n\nTip: To sync cards across devices, tell the user to run in terminal: npx @touchskyer/memex sync --init";
+    } else if (config.auto) {
+      // autoSync ran via hook — verify the card is committed and pushed
+      // by checking git status. If there's still an untracked card, sync failed silently.
+      const { execFile: execFileCb } = await import("node:child_process");
+      const { promisify } = await import("node:util");
+      const execFile = promisify(execFileCb);
+      try {
+        const { stdout } = await execFile("git", ["-C", home, "status", "--short", "cards/"], { timeout: 5000 });
+        if (stdout.trim()) {
+          // Card is still uncommitted — sync failed
+          syncInfo = `\n\n⚠️ Sync may have failed: card file not committed. Run \`memex sync push\` manually.`;
+        }
+      } catch {
+        // git status failed — can't verify, don't block
+      }
+    }
 
     const warningText = result.warnings?.length ? `\n\n${formatWarnings(result.warnings)}` : "";
-    return textResult(`Card '${slug}' saved.${warningText}${tip}`);
+    return textResult(`Card '${slug}' saved.${warningText}${syncInfo}`);
   });
 
   // ---- organize ----

@@ -112,7 +112,18 @@ export function createMemexServer(store: CardStore, home?: string): McpServer {
     if (!result.success) {
       return textResult(result.error!, true);
     }
-    return writeSuccess(slug, result.warnings);
+
+    // Trigger autoSync after successful write (mirrors memex_retro behavior)
+    let syncWarning = "";
+    if (home) {
+      const syncResult = await autoSync(home);
+      if (syncResult && !syncResult.success) {
+        syncWarning = `\n\n⚠️ ${syncResult.message}`;
+      }
+    }
+
+    const warningText = result.warnings?.length ? `\n\n${formatWarnings(result.warnings)}` : "";
+    return textResult(`Card '${slug}' written successfully.${warningText}${syncWarning}`);
   });
 
   server.registerTool("memex_links", {
@@ -148,8 +159,8 @@ export function createMemexServer(store: CardStore, home?: string): McpServer {
     hooks.on("pre:recall", () => autoFetch(home));
     hooks.on("pre:retro", () => autoFetch(home));
     hooks.on("pre:organize", () => autoFetch(home));
-    hooks.on("post:retro", () => autoSync(home));
-    hooks.on("post:organize", () => autoSync(home));
+    hooks.on("post:retro", async () => { await autoSync(home); });
+    hooks.on("post:organize", async () => { await autoSync(home); });
     registerOperations(server, store, hooks, home, () => clientName);
   }
 

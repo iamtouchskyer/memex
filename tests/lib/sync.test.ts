@@ -126,7 +126,7 @@ describe("GitAdapter", () => {
     expect(status.configured).toBe(true);
     expect(status.remote).toBe(bare);
     expect(status.adapter).toBe("git");
-    expect(status.auto).toBe(false);
+    expect(status.auto).toBe(true);
 
     await rm(bare, { recursive: true, maxRetries: 3, retryDelay: 100 });
   });

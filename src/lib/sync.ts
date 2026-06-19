@@ -317,7 +317,7 @@ export class GitAdapter implements SyncAdapter {
     await writeSyncConfig(this.home, {
       remote: url,
       adapter: "git",
-      auto: false,
+      auto: true,
     });
 
     return url;
@@ -514,14 +514,16 @@ export class GitAdapter implements SyncAdapter {
 
 // ---- Auto-sync helper ----
 
-export async function autoSync(home: string): Promise<void> {
+export async function autoSync(home: string): Promise<SyncResult | null> {
   const config = await readSyncConfig(home);
-  if (!config.auto || !config.remote) return;
+  if (!config.auto || !config.remote) return null;
   try {
     const adapter = new GitAdapter(home);
-    await adapter.sync();
+    return await adapter.sync();
   } catch (err) {
-    process.stderr.write(`sync warning: ${(err as Error).message}\n`);
+    const msg = (err as Error).message || "unknown sync error";
+    process.stderr.write(`sync warning: ${msg}\n`);
+    return { success: false, message: `Sync failed: ${msg}` };
   }
 }
 
