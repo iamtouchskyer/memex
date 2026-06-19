@@ -254,6 +254,21 @@ program
   });
 
 program
+  .command("mcp-config")
+  .description("Configure memex MCP server for Claude Code or other clients")
+  .option("--claude-code", "Write mcpServers entry into ~/.claude/settings.json")
+  .option("--json", "Print mcpServers JSON to stdout (for manual config)")
+  .action(async (opts: { claudeCode?: boolean; json?: boolean }) => {
+    const { configureMcp } = await import("./commands/mcp-config.js");
+    const result = await configureMcp(opts);
+    if (result.output) process.stdout.write(result.output + "\n");
+    if (!result.success) {
+      if (result.error) process.stderr.write(result.error + "\n");
+      exit(1);
+    }
+  });
+
+program
   .command("import [source]")
   .description("Import memories from other tools (openclaw, ...)")
   .option("--dry-run", "Preview without writing")

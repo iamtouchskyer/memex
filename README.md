@@ -45,6 +45,7 @@ All platforms share the same `~/.memex/cards/` directory. A card written in Clau
 |----------|---------|
 | **VS Code / Copilot** | Search "memex" in [VS Code Extensions](https://marketplace.visualstudio.com/items?itemName=touchskyer.memex-mcp) — install and done, no extra setup |
 | **Claude Code** | `/plugin marketplace add iamtouchskyer/memex` then `/plugin install memex@memex` |
+| **Claude Code (MCP fallback)** | `npm install -g @touchskyer/memex && memex mcp-config --claude-code` |
 | **Cursor** | First `npm install -g @touchskyer/memex`, then [one-click install](cursor://anysphere.cursor-deeplink/mcp/install?name=memex&config=eyJjb21tYW5kIjoibWVtZXgiLCJhcmdzIjpbIm1jcCJdfQ==) |
 | **Codex** | `npm install -g @touchskyer/memex && codex mcp add memex -- memex mcp` |
 | **Pi** | `npm install -g @touchskyer/memex && pi install npm:@touchskyer/memex` |
@@ -190,6 +191,7 @@ AI 编程 agent 的持久记忆系统。让你的 agent 跨会话记住学到的
 |------|------|
 | **VS Code / Copilot** | 在 [VS Code 扩展商店](https://marketplace.visualstudio.com/items?itemName=touchskyer.memex-mcp) 搜索 "memex"——安装即用，无需其他配置 |
 | **Claude Code** | `/plugin marketplace add iamtouchskyer/memex`，然后 `/plugin install memex@memex` |
+| **Claude Code（MCP 备选）** | `npm install -g @touchskyer/memex && memex mcp-config --claude-code` |
 | **Cursor** | 先 `npm install -g @touchskyer/memex`，然后 [一键安装](cursor://anysphere.cursor-deeplink/mcp/install?name=memex&config=eyJjb21tYW5kIjoibWVtZXgiLCJhcmdzIjpbIm1jcCJdfQ==) |
 | **Codex** | `npm install -g @touchskyer/memex && codex mcp add memex -- memex mcp` |
 | **Pi** | `npm install -g @touchskyer/memex && pi install npm:@touchskyer/memex` |
@@ -236,6 +238,7 @@ AIコーディングエージェントのための永続メモリシステム。
 |---------------|---------|
 | **VS Code / Copilot** | [VS Code 拡張機能](https://marketplace.visualstudio.com/items?itemName=touchskyer.memex-mcp)で "memex" を検索——インストールするだけ、追加設定不要 |
 | **Claude Code** | `/plugin marketplace add iamtouchskyer/memex`、その後 `/plugin install memex@memex` |
+| **Claude Code（MCPフォールバック）** | `npm install -g @touchskyer/memex && memex mcp-config --claude-code` |
 | **Cursor** | まず `npm install -g @touchskyer/memex`、その後 [ワンクリックインストール](cursor://anysphere.cursor-deeplink/mcp/install?name=memex&config=eyJjb21tYW5kIjoibWVtZXgiLCJhcmdzIjpbIm1jcCJdfQ==) |
 | **Codex** | `npm install -g @touchskyer/memex && codex mcp add memex -- memex mcp` |
 | **Pi** | `npm install -g @touchskyer/memex && pi install npm:@touchskyer/memex` |
@@ -290,6 +293,7 @@ AI 코딩 에이전트를 위한 영구 메모리 시스템. 에이전트가 세
 |--------|------|
 | **VS Code / Copilot** | [VS Code 확장](https://marketplace.visualstudio.com/items?itemName=touchskyer.memex-mcp)에서 "memex" 검색 — 설치하면 끝, 추가 설정 불필요 |
 | **Claude Code** | `/plugin marketplace add iamtouchskyer/memex` 후 `/plugin install memex@memex` |
+| **Claude Code (MCP 대체)** | `npm install -g @touchskyer/memex && memex mcp-config --claude-code` |
 | **Cursor** | 먼저 `npm install -g @touchskyer/memex`, 그런 다음 [원클릭 설치](cursor://anysphere.cursor-deeplink/mcp/install?name=memex&config=eyJjb21tYW5kIjoibWVtZXgiLCJhcmdzIjpbIm1jcCJdfQ==) |
 | **Codex** | `npm install -g @touchskyer/memex && codex mcp add memex -- memex mcp` |
 | **Pi** | `npm install -g @touchskyer/memex && pi install npm:@touchskyer/memex` |
@@ -344,6 +348,7 @@ Todas las plataformas comparten el mismo directorio `~/.memex/cards/`. Una tarje
 |------------|---------|
 | **VS Code / Copilot** | Busca "memex" en [VS Code Extensions](https://marketplace.visualstudio.com/items?itemName=touchskyer.memex-mcp) — instala y listo, sin configuración adicional |
 | **Claude Code** | `/plugin marketplace add iamtouchskyer/memex`, luego `/plugin install memex@memex` |
+| **Claude Code (MCP alternativo)** | `npm install -g @touchskyer/memex && memex mcp-config --claude-code` |
 | **Cursor** | Primero `npm install -g @touchskyer/memex`, luego [instalación con un clic](cursor://anysphere.cursor-deeplink/mcp/install?name=memex&config=eyJjb21tYW5kIjoibWVtZXgiLCJhcmdzIjpbIm1jcCJdfQ==) |
 | **Codex** | `npm install -g @touchskyer/memex && codex mcp add memex -- memex mcp` |
 | **Pi** | `npm install -g @touchskyer/memex && pi install npm:@touchskyer/memex` |
