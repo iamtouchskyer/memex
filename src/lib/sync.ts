@@ -96,7 +96,7 @@ async function ghAvailable(): Promise<boolean> {
 }
 
 /** Diagnose common git remote errors and return actionable hint. */
-function diagnoseGitError(errMsg: string, remote?: string): string {
+export function diagnoseGitError(errMsg: string, remote?: string): string {
   const msg = errMsg.toLowerCase();
   if (msg.includes("permission denied") || msg.includes("publickey") || msg.includes("authentication failed")) {
     const isSSH = remote && (remote.startsWith("git@") || remote.includes("ssh://"));
