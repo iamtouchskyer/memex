@@ -95,6 +95,35 @@ async function ghAvailable(): Promise<boolean> {
   }
 }
 
+/** Diagnose common git remote errors and return actionable hint. */
+function diagnoseGitError(errMsg: string, remote?: string): string {
+  const msg = errMsg.toLowerCase();
+  if (msg.includes("permission denied") || msg.includes("publickey") || msg.includes("authentication failed")) {
+    const isSSH = remote && (remote.startsWith("git@") || remote.includes("ssh://"));
+    if (isSSH) {
+      return (
+        `\n\nDiagnosis: SSH authentication failed.` +
+        `\n  1. Check your SSH key: ssh -T git@github.com` +
+        `\n  2. If no key exists: ssh-keygen -t ed25519 && ssh-add ~/.ssh/id_ed25519` +
+        `\n  3. Add the public key to GitHub: https://github.com/settings/keys` +
+        `\n  Or switch to HTTPS: memex sync --init https://github.com/USER/memex-cards.git`
+      );
+    }
+    return (
+      `\n\nDiagnosis: Authentication failed.` +
+      `\n  For HTTPS: run \`gh auth login\` or check your git credential helper.` +
+      `\n  For SSH: run \`ssh -T git@github.com\` to verify your key.`
+    );
+  }
+  if (msg.includes("could not resolve host") || msg.includes("network is unreachable")) {
+    return `\n\nDiagnosis: Network error. Check your internet connection.`;
+  }
+  if (msg.includes("repository not found") || msg.includes("does not exist")) {
+    return `\n\nDiagnosis: Remote repository not found. Verify the URL exists and you have access.`;
+  }
+  return "";
+}
+
 // ---- GitAdapter ----
 
 /** Detect the remote default branch after fetch. Falls back to main, then master. */
@@ -312,7 +341,13 @@ export class GitAdapter implements SyncAdapter {
       }
     }
 
-    await execGitFile(["-C", this.home, "push", "-u", "origin", "HEAD"]);
+    try {
+      await execGitFile(["-C", this.home, "push", "-u", "origin", "HEAD"]);
+    } catch (err) {
+      const errMsg = (err as Error).message;
+      const hint = diagnoseGitError(errMsg, url);
+      throw new Error(`Push to remote failed: ${errMsg}${hint}`);
+    }
 
     await writeSyncConfig(this.home, {
       remote: url,
@@ -365,7 +400,13 @@ export class GitAdapter implements SyncAdapter {
     }
     try {
       await execGitFile(["-C", this.home, "fetch", "origin"]);
-    } catch {
+    } catch (err) {
+      const errMsg = (err as Error).message || "";
+      const hint = diagnoseGitError(errMsg, config.remote);
+      if (hint) {
+        // Auth error — surface it, don't silently say "offline"
+        return { success: false, message: `Fetch failed: ${errMsg}${hint}` };
+      }
       return { success: true, message: "Offline, using local data." };
     }
     try {
@@ -468,7 +509,9 @@ export class GitAdapter implements SyncAdapter {
     try {
       await execGitFile(["-C", this.home, "push", "origin", "HEAD"]);
     } catch (err) {
-      return { success: false, message: `Push failed: ${(err as Error).message}` };
+      const errMsg = (err as Error).message;
+      const hint = diagnoseGitError(errMsg, config.remote);
+      return { success: false, message: `Push failed: ${errMsg}${hint}` };
     }
     config.lastSync = new Date().toISOString();
     await writeSyncConfig(this.home, config);
