@@ -92,6 +92,44 @@ describe("organize command", () => {
     expect(result.output).toContain("hub (10 inbound)");
   });
 
+  it("excludes type:hub cards from actionable orphans", async () => {
+    await writeFile(
+      join(tmpDir, "cards", "moc.md"),
+      "---\ntitle: Map of Content\ncreated: 2026-01-01\nmodified: 2026-01-01\nsource: test\ntype: hub\n---\nIntentional index, cited by nobody.",
+    );
+    const result = await organizeCommand(store, null);
+    expect(result.output).not.toContain("- moc —");
+  });
+
+  it("excludes high-outbound directory cards from actionable orphans", async () => {
+    await writeFile(
+      join(tmpDir, "cards", "directory.md"),
+      "---\ntitle: Directory\ncreated: 2026-01-01\nmodified: 2026-01-01\nsource: test\n---\n[[a]] [[b]] [[c]] [[d]] [[e]]",
+    );
+    const result = await organizeCommand(store, null);
+    expect(result.output).not.toContain("- directory —");
+  });
+
+  it("keeps fresh orphans out of actionable orphans (grace period)", async () => {
+    const today = new Date().toISOString().split("T")[0];
+    await writeFile(
+      join(tmpDir, "cards", "just-written.md"),
+      `---\ntitle: Just Written\ncreated: ${today}\nmodified: ${today}\nsource: test\n---\nBrand new, no inbound yet.`,
+    );
+    const result = await organizeCommand(store, null);
+    expect(result.output).not.toContain("- just-written —");
+  });
+
+  it("reports old orphans as actionable", async () => {
+    await writeFile(
+      join(tmpDir, "cards", "stale.md"),
+      "---\ntitle: Stale\ncreated: 2026-01-01\nmodified: 2026-01-01\nsource: test\n---\nAging in isolation.",
+    );
+    const result = await organizeCommand(store, null);
+    expect(result.output).toContain("## Orphans");
+    expect(result.output).toContain("- stale —");
+  });
+
   it("skips old cards when since is provided", async () => {
     await writeFile(
       join(tmpDir, "cards", "old.md"),
