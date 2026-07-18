@@ -120,6 +120,52 @@ describe("organize command", () => {
     expect(result.output).not.toContain("- just-written —");
   });
 
+  it("grace keys on created, not modified — a recently-edited old orphan stays actionable", async () => {
+    const today = new Date().toISOString().split("T")[0];
+    // Old card (created long ago) that was just touched (modified today), e.g.
+    // by `memex link`. Keying on modified would wrongly hide it in grace forever;
+    // keying on created keeps it actionable.
+    await writeFile(
+      join(tmpDir, "cards", "old-but-edited.md"),
+      `---\ntitle: Old But Edited\ncreated: 2026-01-01\nmodified: ${today}\nsource: test\n---\nAging in isolation, edited today.`,
+    );
+    const result = await organizeCommand(store, null);
+    expect(result.output).toContain("- old-but-edited —");
+  });
+
+  it("renders the grace section and orphansGrace JSON key for fresh orphans", async () => {
+    const today = new Date().toISOString().split("T")[0];
+    await writeFile(
+      join(tmpDir, "cards", "fresh-orphan.md"),
+      `---\ntitle: Fresh Orphan\ncreated: ${today}\nmodified: ${today}\nsource: test\n---\nBrand new.`,
+    );
+    const text = await organizeCommand(store, null);
+    expect(text.output).toContain("grace period");
+
+    const json = await organizeCommand(store, null, true);
+    const parsed = JSON.parse(json.output);
+    expect(parsed).toHaveProperty("orphansGrace");
+    expect(parsed.orphansGrace.map((o: { slug: string }) => o.slug)).toContain("fresh-orphan");
+  });
+
+  it("treats a card with no created date as actionable (Infinity days, never throws)", async () => {
+    await writeFile(
+      join(tmpDir, "cards", "no-created.md"),
+      "---\ntitle: No Created\nsource: test\n---\nNo created field at all.",
+    );
+    const result = await organizeCommand(store, null);
+    expect(result.output).toContain("- no-created —");
+  });
+
+  it("treats a card with an unparseable created date as actionable (Infinity days)", async () => {
+    await writeFile(
+      join(tmpDir, "cards", "bad-date.md"),
+      "---\ntitle: Bad Date\ncreated: not-a-real-date\nsource: test\n---\nGarbage date string.",
+    );
+    const result = await organizeCommand(store, null);
+    expect(result.output).toContain("- bad-date —");
+  });
+
   it("reports old orphans as actionable", async () => {
     await writeFile(
       join(tmpDir, "cards", "stale.md"),

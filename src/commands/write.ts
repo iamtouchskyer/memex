@@ -35,15 +35,23 @@ export async function writeCommand(store: CardStore, slug: string, input: string
 
   const warnings = [...(safety.warnings ?? [])];
   // New cards are born linkless — this is where orphans come from. Offer cheap
-  // lexical suggestions (zero network) so links grow at write time instead of
-  // via a post-hoc cleanup campaign. Overwrites skip this: existing cards have
-  // had their chance to be linked.
+  // lexical CANDIDATES (zero network) so links grow at write time instead of via
+  // a post-hoc cleanup campaign. Overwrites skip this: existing cards have had
+  // their chance to be linked.
+  //
+  // Suggestions are advisory only. They must never turn a successful, durable
+  // write into a reported failure — the card is already on disk by this point,
+  // so any error while scanning for candidates is swallowed into a soft note.
   if (isNew) {
-    const suggestions = await suggestLinks(store, slug, data, content);
-    if (suggestions.length > 0) {
-      warnings.push(
-        `Consider linking to: ${suggestions.map((s) => `[[${s}]]`).join(" ")}`,
-      );
+    try {
+      const suggestions = await suggestLinks(store, slug, data, content);
+      if (suggestions.length > 0) {
+        warnings.push(
+          `Link candidates (only add [[X]] if you can state the relationship): ${suggestions.map((s) => `[[${s}]]`).join(" ")}`,
+        );
+      }
+    } catch {
+      // Advisory scan failed; the write itself succeeded. Do not fail the command.
     }
   }
 

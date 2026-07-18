@@ -98,4 +98,31 @@ describe("suggestLinks", () => {
     );
     expect(result).toEqual([]);
   });
+
+  it("returns empty for an empty query (no title/tags/content tokens)", async () => {
+    await writeFile(
+      join(tmpDir, "cards", "anything.md"),
+      "---\ntitle: Anything\ncreated: 2026-01-01\nsource: test\n---\nSome body.",
+    );
+    const result = await suggestLinks(store, "", {}, "");
+    expect(result).toEqual([]);
+  });
+
+  it("breaks score ties deterministically by lexicographic slug order", async () => {
+    // Six identical-content cards → identical scores. The tie-break must return
+    // the lexicographically-first three, in order, on every run.
+    for (const suffix of ["f", "b", "d", "a", "e", "c"]) {
+      await writeFile(
+        join(tmpDir, "cards", `auth-${suffix}.md`),
+        `---\ntitle: Auth ${suffix}\ncreated: 2026-01-01\nsource: test\ntags: auth, jwt\n---\nJWT auth token handling.`,
+      );
+    }
+    const result = await suggestLinks(
+      store,
+      "new-auth-card",
+      { title: "New Auth Card", tags: ["auth", "jwt"] },
+      "JWT auth token handling notes.",
+    );
+    expect(result).toEqual(["auth-a", "auth-b", "auth-c"]);
+  });
 });

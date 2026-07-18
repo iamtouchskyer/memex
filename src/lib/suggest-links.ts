@@ -11,6 +11,19 @@ import { parseFrontmatter, extractLinks } from "./parser.js";
 import { tokenizeQuery, buildSearchableFields, scoreCard } from "./scoring.js";
 
 const SUGGEST_LIMIT = 3;
+// Minimum normalizedScore for a card to be offered as a candidate.
+//
+// PROVENANCE: scoreCard returns normalizedScore = totalScore /
+// (effectiveTokens * MAX_FIELD_WEIGHT) — i.e. it is normalized against query
+// length, NOT corpus size. 0.08 means "on average the query tokens hit ~8% of
+// the maximum possible field weight." Calibrated so a card sharing a title/tag
+// term clears the bar while an incidental one-word body overlap does not.
+//
+// CAVEAT (see suggest-links boundary test): because the denominator scales with
+// query length, a very verbose first paragraph dilutes the score and can drop
+// otherwise-relevant cards. This is a lexical pre-filter, not a ranker — the
+// human still decides whether a candidate deserves a relationship link. If the
+// scoring weights in scoring.ts are ever retuned, the boundary test will trip.
 const MIN_SCORE = 0.08;
 
 interface CardFrontmatter {

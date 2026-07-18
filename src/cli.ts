@@ -148,11 +148,11 @@ program
   });
 
 program
-  .command("link <from> <to>")
-  .description("Append an outbound [[wiki-link]] from <from> to <to> (single-file, from→to)")
-  .action(async (from: string, to: string) => {
+  .command("link <from> <to> <context...>")
+  .description("Append an outbound [[wiki-link]] from <from> to <to> with a relationship clause (single-file, from→to)")
+  .action(async (from: string, to: string, context: string[]) => {
     const store = await getStore();
-    const result = await linkCommand(store, from, to);
+    const result = await linkCommand(store, from, to, context.join(" "));
     if (!result.success) {
       process.stderr.write(result.error! + "\n");
       exit(1);

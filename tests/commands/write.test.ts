@@ -153,8 +153,31 @@ Remote: https://user:secret1234567890@github.com/org/repo.git`;
       "jwt-notes",
       "---\ntitle: JWT Notes\ncreated: 2026-01-01\nsource: retro\ntags: jwt\n---\n\nMore JWT token notes.",
     );
-    const hint = (result.warnings ?? []).find((w) => w.includes("Consider linking"));
+    const hint = (result.warnings ?? []).find((w) => w.includes("Link candidates"));
     expect(hint).toBeFalsy();
+  });
+
+  it("still succeeds when the advisory suggestion scan throws", async () => {
+    // Seed one existing card so a new write would normally trigger suggestLinks.
+    await writeCommand(
+      store,
+      "seed",
+      "---\ntitle: Seed\ncreated: 2026-01-01\nsource: retro\ntags: jwt\n---\n\nJWT token seed.",
+    );
+    // Make the candidate scan blow up AFTER the durable write has happened.
+    const spy = vi.spyOn(store, "readCard").mockRejectedValue(new Error("boom"));
+
+    const result = await writeCommand(
+      store,
+      "jwt-new",
+      "---\ntitle: JWT New\ncreated: 2026-01-01\nsource: retro\ntags: jwt\n---\n\nNew JWT token card.",
+    );
+    spy.mockRestore();
+
+    expect(result.success).toBe(true);
+    // Card must be durably on disk despite the advisory failure.
+    const written = await readFile(join(tmpDir, "cards", "jwt-new.md"), "utf-8");
+    expect(written).toContain("title: JWT New");
   });
 
   it("does not call autoSync", async () => {

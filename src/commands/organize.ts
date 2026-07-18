@@ -10,6 +10,10 @@ function toDateString(val: unknown): string {
 // A card links out to >= this many others = a directory/MOC, not a lost orphan.
 const HUB_OUTBOUND = 5;
 // Freshly written cards haven't had time to be cited; grace before nagging.
+// Keyed on `created`, NOT `modified`: any edit (including `memex link`, which
+// bumps modified) would otherwise re-arm the grace window and hide the most-
+// edited orphans forever, while a bulk import stamping modified=today would
+// falsely report the whole corpus as "healthy".
 const FRESH_DAYS = 7;
 
 function daysSince(dateStr: string, now: Date): number {
@@ -35,7 +39,7 @@ export async function organizeCommand(
   // Build link graph
   const outboundMap = new Map<string, string[]>();
   const inboundMap = new Map<string, string[]>();
-  const cardData = new Map<string, { title: string; modified: string; status: string; type: string; content: string }>();
+  const cardData = new Map<string, { title: string; created: string; modified: string; status: string; type: string; content: string }>();
 
   for (const card of cards) {
     inboundMap.set(card.slug, []);
@@ -48,6 +52,7 @@ export async function organizeCommand(
     outboundMap.set(card.slug, links);
     cardData.set(card.slug, {
       title: String(data.title || card.slug),
+      created: toDateString(data.created || ""),
       modified: toDateString(data.modified || ""),
       status: String(data.status || ""),
       type: String(data.type || ""),
@@ -84,10 +89,10 @@ export async function organizeCommand(
     return true;
   });
   const orphans = candidateOrphans.filter(
-    (s) => daysSince(cardData.get(s.slug)?.modified ?? "", now) >= FRESH_DAYS,
+    (s) => daysSince(cardData.get(s.slug)?.created ?? "", now) >= FRESH_DAYS,
   );
   const orphansGrace = candidateOrphans.filter(
-    (s) => daysSince(cardData.get(s.slug)?.modified ?? "", now) < FRESH_DAYS,
+    (s) => daysSince(cardData.get(s.slug)?.created ?? "", now) < FRESH_DAYS,
   );
   if (orphans.length > 0) {
     sections.push(
