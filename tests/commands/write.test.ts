@@ -118,6 +118,45 @@ Remote: https://user:secret1234567890@github.com/org/repo.git`;
     expect(written).not.toContain("secret1234567890");
   });
 
+  it("suggests linking a new card to a relevant existing card", async () => {
+    await writeCommand(
+      store,
+      "jwt-migration",
+      "---\ntitle: JWT Migration\ncreated: 2026-01-01\nsource: retro\ntags: jwt, auth\n---\n\nMoving to stateless JWT tokens.",
+    );
+
+    const result = await writeCommand(
+      store,
+      "jwt-revocation",
+      "---\ntitle: JWT Revocation\ncreated: 2026-01-01\nsource: retro\ntags: jwt, auth\n---\n\nHow to revoke a JWT token when using stateless auth.",
+    );
+    expect(result.success).toBe(true);
+    const hint = (result.warnings ?? []).find((w) => w.includes("[[jwt-migration]]"));
+    expect(hint).toBeTruthy();
+  });
+
+  it("does not suggest links when overwriting an existing card", async () => {
+    await writeCommand(
+      store,
+      "jwt-migration",
+      "---\ntitle: JWT Migration\ncreated: 2026-01-01\nsource: retro\ntags: jwt\n---\n\nStateless JWT tokens.",
+    );
+    await writeCommand(
+      store,
+      "jwt-notes",
+      "---\ntitle: JWT Notes\ncreated: 2026-01-01\nsource: retro\ntags: jwt\n---\n\nJWT token notes.",
+    );
+
+    // Overwrite jwt-notes: should NOT re-run suggestions
+    const result = await writeCommand(
+      store,
+      "jwt-notes",
+      "---\ntitle: JWT Notes\ncreated: 2026-01-01\nsource: retro\ntags: jwt\n---\n\nMore JWT token notes.",
+    );
+    const hint = (result.warnings ?? []).find((w) => w.includes("Consider linking"));
+    expect(hint).toBeFalsy();
+  });
+
   it("does not call autoSync", async () => {
     const syncMod = await import("../../src/lib/sync.js");
     const spy = vi.spyOn(syncMod, "autoSync");
