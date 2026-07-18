@@ -19,6 +19,7 @@ import { importCommand } from "./commands/import.js";
 import { doctorCommand, doctorRunAll } from "./commands/doctor.js";
 import { migrateCommand } from "./commands/migrate.js";
 import { backlinksCommand } from "./commands/backlinks.js";
+import { linkCommand } from "./commands/link.js";
 import { organizeCommand } from "./commands/organize.js";
 import { flomoConfigCommand, flomoPushCommand, flomoImportCommand } from "./commands/flomo.js";
 
@@ -144,6 +145,20 @@ program
     const result = await backlinksCommand(store, slug, { all: opts.all, config, memexHome: home });
     if (result.output) process.stdout.write(result.output + "\n");
     exit(result.exitCode);
+  });
+
+program
+  .command("link <from> <to>")
+  .description("Append an outbound [[wiki-link]] from <from> to <to> (single-file, from→to)")
+  .action(async (from: string, to: string) => {
+    const store = await getStore();
+    const result = await linkCommand(store, from, to);
+    if (!result.success) {
+      process.stderr.write(result.error! + "\n");
+      exit(1);
+      return;
+    }
+    if (result.message) process.stdout.write(result.message + "\n");
   });
 
 program
