@@ -7427,6 +7427,441 @@ var init_sensitive_input = __esm({
   }
 });
 
+// src/lib/scoring.ts
+function isCodeToken(originalToken) {
+  return CODE_TOKEN_RE.test(originalToken);
+}
+function tokenizeQuery(query) {
+  const rawSegments = extractTokenSegments(query);
+  const expanded = expandCompoundTokens(rawSegments);
+  const originalCasingMap = /* @__PURE__ */ new Map();
+  for (const t of expanded) {
+    const lower = t.toLowerCase();
+    if (!originalCasingMap.has(lower)) {
+      originalCasingMap.set(lower, t);
+    }
+  }
+  const deduped = [...new Set(expanded.map((t) => t.toLowerCase()))];
+  const originalTokensAll = deduped.map((t) => originalCasingMap.get(t) ?? t);
+  const stopwordsRemoved = [];
+  const tokens = [];
+  const originalTokensFiltered = [];
+  for (let i = 0; i < deduped.length; i++) {
+    const t = deduped[i];
+    if (ALL_STOPWORDS.has(t)) {
+      stopwordsRemoved.push(t);
+    } else {
+      tokens.push(t);
+      originalTokensFiltered.push(originalTokensAll[i]);
+    }
+  }
+  if (tokens.length === 0 && deduped.length > 0) {
+    return { tokens: deduped, originalTokens: originalTokensAll, stopwordsRemoved: [] };
+  }
+  return { tokens, originalTokens: originalTokensFiltered, stopwordsRemoved };
+}
+function extractTokenSegments(text) {
+  const segments = [];
+  for (const match of text.matchAll(ASCII_TOKEN_RE)) {
+    segments.push(match[0]);
+  }
+  for (const match of text.matchAll(CJK_RE)) {
+    segments.push(match[0]);
+  }
+  return segments;
+}
+function expandCompoundTokens(tokens) {
+  const result = [];
+  for (const token of tokens) {
+    result.push(token);
+    if (/[-_.\/]/.test(token)) {
+      const parts = token.split(/[-_.\/]+/).filter(Boolean);
+      if (parts.length > 1) {
+        for (const part of parts) {
+          result.push(part);
+        }
+      }
+    }
+  }
+  return result;
+}
+function matchTokenInField(token, field, fields, originalToken) {
+  const t = token.toLowerCase();
+  const weight = FIELD_WEIGHTS[field];
+  switch (field) {
+    case "slug": {
+      if (!matchSegment(t, fields.slug, /[-_\/]/g)) return 0;
+      return LOW_SIGNAL_TOKENS.has(t) ? weight * LOW_SIGNAL_PENALTY : weight;
+    }
+    case "title": {
+      const titleMatch = matchSegment(t, fields.title, /[\s\-_]/g) || CJK_CHAR_RE.test(token) && fields.title.toLowerCase().includes(t);
+      if (!titleMatch) return 0;
+      return LOW_SIGNAL_TOKENS.has(t) ? weight * LOW_SIGNAL_PENALTY : weight;
+    }
+    case "tags": {
+      for (const tag of fields.tags) {
+        if (tag.toLowerCase() === t) return weight;
+      }
+      for (const tag of fields.tags) {
+        if (matchSegment(t, tag, /[-_]/g)) return weight * SEGMENT_MATCH_PENALTY;
+      }
+      return 0;
+    }
+    case "category": {
+      const cat = fields.category.toLowerCase();
+      if (cat === t) return weight;
+      if (matchSegment(t, fields.category, /[-_]/g)) return weight * SEGMENT_MATCH_PENALTY;
+      return 0;
+    }
+    case "headings": {
+      if (CJK_CHAR_RE.test(token)) {
+        for (const h of fields.headings) {
+          if (h.toLowerCase().includes(t)) return weight;
+        }
+        return 0;
+      }
+      const escaped = escapeRegex(t);
+      const re = new RegExp(`\\b${escaped}\\b`, "i");
+      for (const h of fields.headings) {
+        if (re.test(h)) {
+          const codeBoost = isCodeToken(originalToken) ? CODE_TOKEN_BOOST : 1;
+          return Math.min(weight * codeBoost, MAX_FIELD_WEIGHT);
+        }
+      }
+      return 0;
+    }
+    case "wikilinks":
+      for (const link of fields.wikilinks) {
+        if (matchSegment(t, link, /[-]/g)) return weight;
+      }
+      return 0;
+    case "body": {
+      if (CJK_CHAR_RE.test(token)) {
+        if (fields.body.toLowerCase().includes(t)) return weight;
+        return 0;
+      }
+      const escaped = escapeRegex(t);
+      const re = new RegExp(`\\b${escaped}\\b`, "i");
+      if (re.test(fields.body)) {
+        const codeBoost = isCodeToken(originalToken) ? CODE_TOKEN_BOOST : 1;
+        return Math.min(weight * codeBoost, MAX_FIELD_WEIGHT);
+      }
+      return 0;
+    }
+  }
+}
+function matchSegment(token, text, separatorRe) {
+  const segments = text.toLowerCase().split(separatorRe).filter(Boolean);
+  return segments.includes(token);
+}
+function escapeRegex(str2) {
+  return str2.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function buildSearchableFields(slug, data, content, wikilinks) {
+  const title = String(data.title || slug);
+  let tags = [];
+  const rawTags = data.tags ?? data.tag;
+  if (Array.isArray(rawTags)) {
+    tags = rawTags.map((t) => String(t).trim()).filter(Boolean);
+  } else if (typeof rawTags === "string") {
+    tags = rawTags.split(",").map((t) => t.trim()).filter(Boolean);
+  }
+  const category = typeof data.category === "string" ? data.category : "";
+  const headings = [];
+  for (const line of content.split("\n")) {
+    if (/^#{1,6}\s/.test(line)) {
+      headings.push(line.replace(/^#{1,6}\s+/, "").trim());
+    }
+  }
+  const bodyLines = content.split("\n");
+  return { slug, title, tags, category, headings, wikilinks, body: content, bodyLines };
+}
+function scoreCard(tokens, originalTokens, fields) {
+  const effectiveTokens = tokens.length;
+  if (effectiveTokens === 0) return null;
+  let totalScore = 0;
+  let matchedCount = 0;
+  let firstMatchIndex = -1;
+  const matchedFields = [];
+  let firstMatchLine = "";
+  let hasHighSignalMatch = false;
+  const originalMap = /* @__PURE__ */ new Map();
+  for (const ot of originalTokens) {
+    originalMap.set(ot.toLowerCase(), ot);
+  }
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    const origToken = originalMap.get(token) ?? token;
+    let bestWeight = 0;
+    let bestField = "";
+    for (const field of FIELD_ORDER) {
+      const w = matchTokenInField(token, field, fields, origToken);
+      if (w > bestWeight) {
+        bestWeight = w;
+        bestField = field;
+      }
+    }
+    if (bestWeight > 0) {
+      totalScore += bestWeight;
+      matchedCount++;
+      if (firstMatchIndex === -1) firstMatchIndex = i;
+      matchedFields.push(`${bestField}:${token}`);
+      if (isHighSignalMatch(token, bestField)) {
+        hasHighSignalMatch = true;
+      }
+      if (!firstMatchLine) {
+        firstMatchLine = findMatchLine(token, origToken, fields);
+      }
+    }
+  }
+  if (matchedCount === 0) return null;
+  const coverage = matchedCount / effectiveTokens;
+  const normalizedScore = totalScore / (effectiveTokens * MAX_FIELD_WEIGHT);
+  if (!meetsThreshold(effectiveTokens, matchedCount, hasHighSignalMatch)) {
+    return null;
+  }
+  return {
+    slug: fields.slug,
+    score: normalizedScore,
+    coverage,
+    matchedTokens: matchedCount,
+    effectiveTokens,
+    firstMatchIndex,
+    matchLine: firstMatchLine,
+    matchedFields
+  };
+}
+function isHighSignalMatch(token, field) {
+  if (field === "tags") return true;
+  if (field === "slug" || field === "title") {
+    if (ALL_STOPWORDS.has(token)) return false;
+    if (CJK_CHAR_RE.test(token)) return true;
+    if (token.length < 3 && !isCodeToken(token)) return false;
+    if (LOW_SIGNAL_TOKENS.has(token)) return false;
+    return true;
+  }
+  return false;
+}
+function meetsThreshold(effectiveTokens, matchedTokens, hasHighSignalMatch) {
+  if (effectiveTokens < 4) return true;
+  if (hasHighSignalMatch) return true;
+  const minRequired = Math.max(2, Math.ceil(0.3 * effectiveTokens));
+  return matchedTokens >= minRequired;
+}
+function findMatchLine(token, originalToken, fields) {
+  const escaped = escapeRegex(token);
+  if (CJK_CHAR_RE.test(token)) {
+    for (const line of fields.bodyLines) {
+      if (line.toLowerCase().includes(token)) {
+        return line.trim();
+      }
+    }
+  } else {
+    const re = new RegExp(`\\b${escaped}\\b`, "i");
+    for (const line of fields.bodyLines) {
+      if (re.test(line)) {
+        return line.trim();
+      }
+    }
+  }
+  const headingRe = new RegExp(`\\b${escaped}\\b`, "i");
+  for (const h of fields.headings) {
+    if (headingRe.test(h)) {
+      return h;
+    }
+  }
+  return "";
+}
+function sortScoredMatches(matches) {
+  return matches.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    if (b.coverage !== a.coverage) return b.coverage - a.coverage;
+    if (a.firstMatchIndex !== b.firstMatchIndex) return a.firstMatchIndex - b.firstMatchIndex;
+    return a.slug.localeCompare(b.slug);
+  });
+}
+var FIELD_WEIGHTS, MAX_FIELD_WEIGHT, CODE_TOKEN_BOOST, SEGMENT_MATCH_PENALTY, LOW_SIGNAL_PENALTY, EN_STOPWORDS, CJK_STOPWORDS, ALL_STOPWORDS, CODE_TOKEN_RE, CJK_RE, CJK_CHAR_RE, ASCII_TOKEN_RE, FIELD_ORDER, LOW_SIGNAL_TOKENS;
+var init_scoring = __esm({
+  "src/lib/scoring.ts"() {
+    "use strict";
+    FIELD_WEIGHTS = {
+      slug: 5,
+      title: 5,
+      tags: 4,
+      category: 3,
+      headings: 3,
+      wikilinks: 2,
+      body: 1
+    };
+    MAX_FIELD_WEIGHT = Math.max(...Object.values(FIELD_WEIGHTS));
+    CODE_TOKEN_BOOST = 2;
+    SEGMENT_MATCH_PENALTY = 0.8;
+    LOW_SIGNAL_PENALTY = 0.25;
+    EN_STOPWORDS = /* @__PURE__ */ new Set([
+      "how",
+      "what",
+      "when",
+      "where",
+      "why",
+      "which",
+      "can",
+      "does",
+      "should",
+      "would",
+      "could",
+      "the",
+      "a",
+      "an",
+      "is",
+      "are",
+      "was",
+      "were",
+      "be",
+      "been",
+      "to",
+      "of",
+      "in",
+      "for",
+      "on",
+      "with",
+      "at",
+      "by",
+      "from",
+      "as",
+      "into",
+      "about",
+      "fix",
+      "use",
+      "get",
+      "set",
+      "make",
+      "do",
+      "did"
+    ]);
+    CJK_STOPWORDS = /* @__PURE__ */ new Set([
+      "\u7684",
+      "\u4E86",
+      "\u662F",
+      "\u5728",
+      "\u6211",
+      "\u8FD9\u4E2A",
+      "\u90A3\u4E2A",
+      "\u4EC0\u4E48",
+      "\u600E\u4E48",
+      "\u5982\u4F55",
+      "\u95EE\u9898",
+      "\u5B9E\u73B0",
+      "\u4F7F\u7528",
+      "\u4E00\u4E2A"
+    ]);
+    ALL_STOPWORDS = /* @__PURE__ */ new Set([...EN_STOPWORDS, ...CJK_STOPWORDS]);
+    CODE_TOKEN_RE = /(?:[A-Z]{2,}$|[a-z][a-zA-Z]*[A-Z]|[A-Z][a-z]+[A-Z]|\d|[_.\/])/;
+    CJK_RE = new RegExp("\\p{Unified_Ideograph}+", "gu");
+    CJK_CHAR_RE = new RegExp("\\p{Unified_Ideograph}", "u");
+    ASCII_TOKEN_RE = /[a-zA-Z0-9_\-./]+/g;
+    FIELD_ORDER = [
+      "slug",
+      "title",
+      "tags",
+      "category",
+      "headings",
+      "wikilinks",
+      "body"
+    ];
+    LOW_SIGNAL_TOKENS = /* @__PURE__ */ new Set([
+      "guide",
+      "pattern",
+      "patterns",
+      "server",
+      "config",
+      "setup",
+      "test",
+      "testing",
+      "flow",
+      "workflow",
+      "deployment",
+      "service",
+      "client",
+      "handler",
+      "manager",
+      "helper",
+      "util",
+      "utils",
+      "base",
+      "core",
+      "common",
+      "shared",
+      "default",
+      "main",
+      "index",
+      "list",
+      "item",
+      "data",
+      "info",
+      "detail",
+      "new",
+      "old",
+      "tmp",
+      "temp",
+      "app",
+      "api"
+    ]);
+  }
+});
+
+// src/lib/suggest-links.ts
+function firstParagraph(content) {
+  const trimmed = content.trim();
+  const idx = trimmed.indexOf("\n\n");
+  return idx === -1 ? trimmed : trimmed.slice(0, idx);
+}
+function tagList(data) {
+  const raw = data.tags ?? data.tag;
+  if (Array.isArray(raw)) return raw.map((t) => String(t).trim()).filter(Boolean);
+  if (typeof raw === "string") return raw.split(",").map((t) => t.trim()).filter(Boolean);
+  return [];
+}
+async function suggestLinks(store, slug, data, content) {
+  const query = [
+    String(data.title || slug),
+    tagList(data).join(" "),
+    typeof data.category === "string" ? data.category : "",
+    firstParagraph(content)
+  ].filter(Boolean).join(" ");
+  const { tokens, originalTokens } = tokenizeQuery(query);
+  if (tokens.length === 0) return [];
+  const alreadyLinked = new Set(extractLinks(content));
+  const cards = await store.scanAll();
+  const scored = [];
+  for (const card of cards) {
+    if (card.slug === slug || alreadyLinked.has(card.slug)) continue;
+    const raw = await store.readCard(card.slug);
+    const parsed = parseFrontmatter(raw);
+    const fields = buildSearchableFields(
+      card.slug,
+      parsed.data,
+      parsed.content,
+      extractLinks(parsed.content)
+    );
+    const match = scoreCard(tokens, originalTokens, fields);
+    if (match && match.score >= MIN_SCORE) {
+      scored.push({ slug: card.slug, score: match.score });
+    }
+  }
+  scored.sort((a, b) => b.score !== a.score ? b.score - a.score : a.slug.localeCompare(b.slug));
+  return scored.slice(0, SUGGEST_LIMIT).map((s) => s.slug);
+}
+var SUGGEST_LIMIT, MIN_SCORE;
+var init_suggest_links = __esm({
+  "src/lib/suggest-links.ts"() {
+    "use strict";
+    init_parser();
+    init_scoring();
+    SUGGEST_LIMIT = 3;
+    MIN_SCORE = 0.08;
+  }
+});
+
 // src/commands/write.ts
 async function writeCommand(store, slug, input) {
   const safety = prepareMemexInput(input, "content");
@@ -7442,8 +7877,21 @@ async function writeCommand(store, slug, input) {
     data.created = data.created.toISOString().split("T")[0];
   }
   const output = stringifyFrontmatter(content, data);
+  const isNew = !await store.resolve(slug);
   await store.writeCard(slug, output);
-  return { success: true, warnings: safety.warnings };
+  const warnings = [...safety.warnings ?? []];
+  if (isNew) {
+    try {
+      const suggestions = await suggestLinks(store, slug, data, content);
+      if (suggestions.length > 0) {
+        warnings.push(
+          `Link candidates (only add [[X]] if you can state the relationship): ${suggestions.map((s) => `[[${s}]]`).join(" ")}`
+        );
+      }
+    } catch {
+    }
+  }
+  return { success: true, warnings };
 }
 var REQUIRED_FIELDS;
 var init_write = __esm({
@@ -7451,6 +7899,7 @@ var init_write = __esm({
     "use strict";
     init_parser();
     init_sensitive_input();
+    init_suggest_links();
     REQUIRED_FIELDS = ["title", "created", "source"];
   }
 });
@@ -8051,388 +8500,6 @@ var init_embeddings = __esm({
   }
 });
 
-// src/lib/scoring.ts
-function isCodeToken(originalToken) {
-  return CODE_TOKEN_RE.test(originalToken);
-}
-function tokenizeQuery(query) {
-  const rawSegments = extractTokenSegments(query);
-  const expanded = expandCompoundTokens(rawSegments);
-  const originalCasingMap = /* @__PURE__ */ new Map();
-  for (const t of expanded) {
-    const lower = t.toLowerCase();
-    if (!originalCasingMap.has(lower)) {
-      originalCasingMap.set(lower, t);
-    }
-  }
-  const deduped = [...new Set(expanded.map((t) => t.toLowerCase()))];
-  const originalTokensAll = deduped.map((t) => originalCasingMap.get(t) ?? t);
-  const stopwordsRemoved = [];
-  const tokens = [];
-  const originalTokensFiltered = [];
-  for (let i = 0; i < deduped.length; i++) {
-    const t = deduped[i];
-    if (ALL_STOPWORDS.has(t)) {
-      stopwordsRemoved.push(t);
-    } else {
-      tokens.push(t);
-      originalTokensFiltered.push(originalTokensAll[i]);
-    }
-  }
-  if (tokens.length === 0 && deduped.length > 0) {
-    return { tokens: deduped, originalTokens: originalTokensAll, stopwordsRemoved: [] };
-  }
-  return { tokens, originalTokens: originalTokensFiltered, stopwordsRemoved };
-}
-function extractTokenSegments(text) {
-  const segments = [];
-  for (const match of text.matchAll(ASCII_TOKEN_RE)) {
-    segments.push(match[0]);
-  }
-  for (const match of text.matchAll(CJK_RE)) {
-    segments.push(match[0]);
-  }
-  return segments;
-}
-function expandCompoundTokens(tokens) {
-  const result = [];
-  for (const token of tokens) {
-    result.push(token);
-    if (/[-_.\/]/.test(token)) {
-      const parts = token.split(/[-_.\/]+/).filter(Boolean);
-      if (parts.length > 1) {
-        for (const part of parts) {
-          result.push(part);
-        }
-      }
-    }
-  }
-  return result;
-}
-function matchTokenInField(token, field, fields, originalToken) {
-  const t = token.toLowerCase();
-  const weight = FIELD_WEIGHTS[field];
-  switch (field) {
-    case "slug": {
-      if (!matchSegment(t, fields.slug, /[-_\/]/g)) return 0;
-      return LOW_SIGNAL_TOKENS.has(t) ? weight * LOW_SIGNAL_PENALTY : weight;
-    }
-    case "title": {
-      const titleMatch = matchSegment(t, fields.title, /[\s\-_]/g) || CJK_CHAR_RE.test(token) && fields.title.toLowerCase().includes(t);
-      if (!titleMatch) return 0;
-      return LOW_SIGNAL_TOKENS.has(t) ? weight * LOW_SIGNAL_PENALTY : weight;
-    }
-    case "tags": {
-      for (const tag of fields.tags) {
-        if (tag.toLowerCase() === t) return weight;
-      }
-      for (const tag of fields.tags) {
-        if (matchSegment(t, tag, /[-_]/g)) return weight * SEGMENT_MATCH_PENALTY;
-      }
-      return 0;
-    }
-    case "category": {
-      const cat = fields.category.toLowerCase();
-      if (cat === t) return weight;
-      if (matchSegment(t, fields.category, /[-_]/g)) return weight * SEGMENT_MATCH_PENALTY;
-      return 0;
-    }
-    case "headings": {
-      if (CJK_CHAR_RE.test(token)) {
-        for (const h of fields.headings) {
-          if (h.toLowerCase().includes(t)) return weight;
-        }
-        return 0;
-      }
-      const escaped = escapeRegex(t);
-      const re = new RegExp(`\\b${escaped}\\b`, "i");
-      for (const h of fields.headings) {
-        if (re.test(h)) {
-          const codeBoost = isCodeToken(originalToken) ? CODE_TOKEN_BOOST : 1;
-          return Math.min(weight * codeBoost, MAX_FIELD_WEIGHT);
-        }
-      }
-      return 0;
-    }
-    case "wikilinks":
-      for (const link of fields.wikilinks) {
-        if (matchSegment(t, link, /[-]/g)) return weight;
-      }
-      return 0;
-    case "body": {
-      if (CJK_CHAR_RE.test(token)) {
-        if (fields.body.toLowerCase().includes(t)) return weight;
-        return 0;
-      }
-      const escaped = escapeRegex(t);
-      const re = new RegExp(`\\b${escaped}\\b`, "i");
-      if (re.test(fields.body)) {
-        const codeBoost = isCodeToken(originalToken) ? CODE_TOKEN_BOOST : 1;
-        return Math.min(weight * codeBoost, MAX_FIELD_WEIGHT);
-      }
-      return 0;
-    }
-  }
-}
-function matchSegment(token, text, separatorRe) {
-  const segments = text.toLowerCase().split(separatorRe).filter(Boolean);
-  return segments.includes(token);
-}
-function escapeRegex(str2) {
-  return str2.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-function buildSearchableFields(slug, data, content, wikilinks) {
-  const title = String(data.title || slug);
-  let tags = [];
-  const rawTags = data.tags ?? data.tag;
-  if (Array.isArray(rawTags)) {
-    tags = rawTags.map((t) => String(t).trim()).filter(Boolean);
-  } else if (typeof rawTags === "string") {
-    tags = rawTags.split(",").map((t) => t.trim()).filter(Boolean);
-  }
-  const category = typeof data.category === "string" ? data.category : "";
-  const headings = [];
-  for (const line of content.split("\n")) {
-    if (/^#{1,6}\s/.test(line)) {
-      headings.push(line.replace(/^#{1,6}\s+/, "").trim());
-    }
-  }
-  const bodyLines = content.split("\n");
-  return { slug, title, tags, category, headings, wikilinks, body: content, bodyLines };
-}
-function scoreCard(tokens, originalTokens, fields) {
-  const effectiveTokens = tokens.length;
-  if (effectiveTokens === 0) return null;
-  let totalScore = 0;
-  let matchedCount = 0;
-  let firstMatchIndex = -1;
-  const matchedFields = [];
-  let firstMatchLine = "";
-  let hasHighSignalMatch = false;
-  const originalMap = /* @__PURE__ */ new Map();
-  for (const ot of originalTokens) {
-    originalMap.set(ot.toLowerCase(), ot);
-  }
-  for (let i = 0; i < tokens.length; i++) {
-    const token = tokens[i];
-    const origToken = originalMap.get(token) ?? token;
-    let bestWeight = 0;
-    let bestField = "";
-    for (const field of FIELD_ORDER) {
-      const w = matchTokenInField(token, field, fields, origToken);
-      if (w > bestWeight) {
-        bestWeight = w;
-        bestField = field;
-      }
-    }
-    if (bestWeight > 0) {
-      totalScore += bestWeight;
-      matchedCount++;
-      if (firstMatchIndex === -1) firstMatchIndex = i;
-      matchedFields.push(`${bestField}:${token}`);
-      if (isHighSignalMatch(token, bestField)) {
-        hasHighSignalMatch = true;
-      }
-      if (!firstMatchLine) {
-        firstMatchLine = findMatchLine(token, origToken, fields);
-      }
-    }
-  }
-  if (matchedCount === 0) return null;
-  const coverage = matchedCount / effectiveTokens;
-  const normalizedScore = totalScore / (effectiveTokens * MAX_FIELD_WEIGHT);
-  if (!meetsThreshold(effectiveTokens, matchedCount, hasHighSignalMatch)) {
-    return null;
-  }
-  return {
-    slug: fields.slug,
-    score: normalizedScore,
-    coverage,
-    matchedTokens: matchedCount,
-    effectiveTokens,
-    firstMatchIndex,
-    matchLine: firstMatchLine,
-    matchedFields
-  };
-}
-function isHighSignalMatch(token, field) {
-  if (field === "tags") return true;
-  if (field === "slug" || field === "title") {
-    if (ALL_STOPWORDS.has(token)) return false;
-    if (CJK_CHAR_RE.test(token)) return true;
-    if (token.length < 3 && !isCodeToken(token)) return false;
-    if (LOW_SIGNAL_TOKENS.has(token)) return false;
-    return true;
-  }
-  return false;
-}
-function meetsThreshold(effectiveTokens, matchedTokens, hasHighSignalMatch) {
-  if (effectiveTokens < 4) return true;
-  if (hasHighSignalMatch) return true;
-  const minRequired = Math.max(2, Math.ceil(0.3 * effectiveTokens));
-  return matchedTokens >= minRequired;
-}
-function findMatchLine(token, originalToken, fields) {
-  const escaped = escapeRegex(token);
-  if (CJK_CHAR_RE.test(token)) {
-    for (const line of fields.bodyLines) {
-      if (line.toLowerCase().includes(token)) {
-        return line.trim();
-      }
-    }
-  } else {
-    const re = new RegExp(`\\b${escaped}\\b`, "i");
-    for (const line of fields.bodyLines) {
-      if (re.test(line)) {
-        return line.trim();
-      }
-    }
-  }
-  const headingRe = new RegExp(`\\b${escaped}\\b`, "i");
-  for (const h of fields.headings) {
-    if (headingRe.test(h)) {
-      return h;
-    }
-  }
-  return "";
-}
-function sortScoredMatches(matches) {
-  return matches.sort((a, b) => {
-    if (b.score !== a.score) return b.score - a.score;
-    if (b.coverage !== a.coverage) return b.coverage - a.coverage;
-    if (a.firstMatchIndex !== b.firstMatchIndex) return a.firstMatchIndex - b.firstMatchIndex;
-    return a.slug.localeCompare(b.slug);
-  });
-}
-var FIELD_WEIGHTS, MAX_FIELD_WEIGHT, CODE_TOKEN_BOOST, SEGMENT_MATCH_PENALTY, LOW_SIGNAL_PENALTY, EN_STOPWORDS, CJK_STOPWORDS, ALL_STOPWORDS, CODE_TOKEN_RE, CJK_RE, CJK_CHAR_RE, ASCII_TOKEN_RE, FIELD_ORDER, LOW_SIGNAL_TOKENS;
-var init_scoring = __esm({
-  "src/lib/scoring.ts"() {
-    "use strict";
-    FIELD_WEIGHTS = {
-      slug: 5,
-      title: 5,
-      tags: 4,
-      category: 3,
-      headings: 3,
-      wikilinks: 2,
-      body: 1
-    };
-    MAX_FIELD_WEIGHT = Math.max(...Object.values(FIELD_WEIGHTS));
-    CODE_TOKEN_BOOST = 2;
-    SEGMENT_MATCH_PENALTY = 0.8;
-    LOW_SIGNAL_PENALTY = 0.25;
-    EN_STOPWORDS = /* @__PURE__ */ new Set([
-      "how",
-      "what",
-      "when",
-      "where",
-      "why",
-      "which",
-      "can",
-      "does",
-      "should",
-      "would",
-      "could",
-      "the",
-      "a",
-      "an",
-      "is",
-      "are",
-      "was",
-      "were",
-      "be",
-      "been",
-      "to",
-      "of",
-      "in",
-      "for",
-      "on",
-      "with",
-      "at",
-      "by",
-      "from",
-      "as",
-      "into",
-      "about",
-      "fix",
-      "use",
-      "get",
-      "set",
-      "make",
-      "do",
-      "did"
-    ]);
-    CJK_STOPWORDS = /* @__PURE__ */ new Set([
-      "\u7684",
-      "\u4E86",
-      "\u662F",
-      "\u5728",
-      "\u6211",
-      "\u8FD9\u4E2A",
-      "\u90A3\u4E2A",
-      "\u4EC0\u4E48",
-      "\u600E\u4E48",
-      "\u5982\u4F55",
-      "\u95EE\u9898",
-      "\u5B9E\u73B0",
-      "\u4F7F\u7528",
-      "\u4E00\u4E2A"
-    ]);
-    ALL_STOPWORDS = /* @__PURE__ */ new Set([...EN_STOPWORDS, ...CJK_STOPWORDS]);
-    CODE_TOKEN_RE = /(?:[A-Z]{2,}$|[a-z][a-zA-Z]*[A-Z]|[A-Z][a-z]+[A-Z]|\d|[_.\/])/;
-    CJK_RE = new RegExp("\\p{Unified_Ideograph}+", "gu");
-    CJK_CHAR_RE = new RegExp("\\p{Unified_Ideograph}", "u");
-    ASCII_TOKEN_RE = /[a-zA-Z0-9_\-./]+/g;
-    FIELD_ORDER = [
-      "slug",
-      "title",
-      "tags",
-      "category",
-      "headings",
-      "wikilinks",
-      "body"
-    ];
-    LOW_SIGNAL_TOKENS = /* @__PURE__ */ new Set([
-      "guide",
-      "pattern",
-      "patterns",
-      "server",
-      "config",
-      "setup",
-      "test",
-      "testing",
-      "flow",
-      "workflow",
-      "deployment",
-      "service",
-      "client",
-      "handler",
-      "manager",
-      "helper",
-      "util",
-      "utils",
-      "base",
-      "core",
-      "common",
-      "shared",
-      "default",
-      "main",
-      "index",
-      "list",
-      "item",
-      "data",
-      "info",
-      "detail",
-      "new",
-      "old",
-      "tmp",
-      "temp",
-      "app",
-      "api"
-    ]);
-  }
-});
-
 // src/commands/search.ts
 import { join as join4 } from "node:path";
 async function searchCommand(store, query, options2 = {}) {
@@ -8596,13 +8663,13 @@ async function keywordSearch(query, allCards, shouldPrefix, options2) {
     const { data, content } = parseFrontmatter(raw);
     const links = extractLinks(content);
     const paragraphs = content.trim().split(/\n\n+/);
-    const firstParagraph = paragraphs[0]?.trim() || "";
-    const showMatchLine = matched.matchLine && !firstParagraph.includes(matched.matchLine) ? matched.matchLine : null;
+    const firstParagraph2 = paragraphs[0]?.trim() || "";
+    const showMatchLine = matched.matchLine && !firstParagraph2.includes(matched.matchLine) ? matched.matchLine : null;
     const showMatchedFields = matched.matchLine === "" ? matched.matchedFields : void 0;
     const item = {
       slug: matched.slug,
       title: String(data.title || card.slug),
-      firstParagraph,
+      firstParagraph: firstParagraph2,
       matchLine: showMatchLine,
       links,
       matchedFields: showMatchedFields
@@ -8666,12 +8733,12 @@ async function semanticSearch(query, allCards, shouldPrefix, options2) {
     const { data, content } = parseFrontmatter(raw);
     const links = extractLinks(content);
     const paragraphs = content.trim().split(/\n\n+/);
-    const firstParagraph = paragraphs[0]?.trim() || "";
+    const firstParagraph2 = paragraphs[0]?.trim() || "";
     const prefixedSlug = shouldPrefix ? `${card.dirPrefix}/${card.slug}` : card.slug;
     const item = {
       slug: prefixedSlug,
       title: String(data.title || card.slug),
-      firstParagraph,
+      firstParagraph: firstParagraph2,
       matchLine: null,
       links
     };
@@ -8910,6 +8977,37 @@ async function ghAvailable() {
   } catch {
     return false;
   }
+}
+function diagnoseGitError(errMsg, remote) {
+  const msg = errMsg.toLowerCase();
+  if (msg.includes("permission denied") || msg.includes("publickey") || msg.includes("authentication failed")) {
+    const isSSH = remote && (remote.startsWith("git@") || remote.includes("ssh://"));
+    if (isSSH) {
+      return `
+
+Diagnosis: SSH authentication failed.
+  1. Check your SSH key: ssh -T git@github.com
+  2. If no key exists: ssh-keygen -t ed25519 && ssh-add ~/.ssh/id_ed25519
+  3. Add the public key to GitHub: https://github.com/settings/keys
+  Or switch to HTTPS: memex sync --init https://github.com/USER/memex-cards.git`;
+    }
+    return `
+
+Diagnosis: Authentication failed.
+  For HTTPS: run \`gh auth login\` or check your git credential helper.
+  For SSH: run \`ssh -T git@github.com\` to verify your key.`;
+  }
+  if (msg.includes("could not resolve host") || msg.includes("network is unreachable")) {
+    return `
+
+Diagnosis: Network error. Check your internet connection.`;
+  }
+  if (msg.includes("repository not found") || msg.includes("does not exist")) {
+    return `
+
+Diagnosis: Remote repository not found. Verify the URL exists and you have access.`;
+  }
+  return "";
 }
 async function detectRemoteBranch(home) {
   try {
@@ -9155,7 +9253,13 @@ Then resolve conflicts and run \`memex sync --init\` again.`
             if (err.message?.includes("Merge conflict")) throw err;
           }
         }
-        await execGitFile(["-C", this.home, "push", "-u", "origin", "HEAD"]);
+        try {
+          await execGitFile(["-C", this.home, "push", "-u", "origin", "HEAD"]);
+        } catch (err) {
+          const errMsg = err.message;
+          const hint = diagnoseGitError(errMsg, url2);
+          throw new Error(`Push to remote failed: ${errMsg}${hint}`);
+        }
         await writeSyncConfig(this.home, {
           remote: url2,
           adapter: "git",
@@ -9206,7 +9310,12 @@ Then resolve conflicts and run \`memex sync --init\` again.`
         }
         try {
           await execGitFile(["-C", this.home, "fetch", "origin"]);
-        } catch {
+        } catch (err) {
+          const errMsg = err.message || "";
+          const hint = diagnoseGitError(errMsg, config2.remote);
+          if (hint) {
+            return { success: false, message: `Fetch failed: ${errMsg}${hint}` };
+          }
           return { success: true, message: "Offline, using local data." };
         }
         try {
@@ -9309,7 +9418,9 @@ Then resolve conflicts and run \`memex sync --init\` again.`
         try {
           await execGitFile(["-C", this.home, "push", "origin", "HEAD"]);
         } catch (err) {
-          return { success: false, message: `Push failed: ${err.message}` };
+          const errMsg = err.message;
+          const hint = diagnoseGitError(errMsg, config2.remote);
+          return { success: false, message: `Push failed: ${errMsg}${hint}` };
         }
         config2.lastSync = (/* @__PURE__ */ new Date()).toISOString();
         await writeSyncConfig(this.home, config2);
@@ -9375,6 +9486,12 @@ function toDateString3(val) {
   if (val instanceof Date) return val.toISOString().split("T")[0];
   return String(val || "");
 }
+function daysSince(dateStr, now) {
+  if (!dateStr) return Infinity;
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return Infinity;
+  return (now.getTime() - d.getTime()) / (1e3 * 60 * 60 * 24);
+}
 async function organizeCommand(store, lastOrganize, json2) {
   const cards = await store.scanAll();
   if (cards.length === 0) return { output: "No cards yet.", exitCode: 0 };
@@ -9391,8 +9508,10 @@ async function organizeCommand(store, lastOrganize, json2) {
     outboundMap.set(card.slug, links);
     cardData.set(card.slug, {
       title: String(data.title || card.slug),
+      created: toDateString3(data.created || ""),
       modified: toDateString3(data.modified || ""),
       status: String(data.status || ""),
+      type: String(data.type || ""),
       content: content.trim()
     });
     for (const link of links) {
@@ -9409,10 +9528,29 @@ async function organizeCommand(store, lastOrganize, json2) {
   const sections = [];
   sections.push("# Organize Report\n");
   sections.push("## Link Stats\n" + formatLinkStats(stats));
-  const orphans = stats.filter((s) => s.inbound === 0 && s.slug !== "index");
+  const now = /* @__PURE__ */ new Date();
+  const candidateOrphans = stats.filter((s) => {
+    if (s.inbound !== 0 || s.slug === "index") return false;
+    const info = cardData.get(s.slug);
+    if (info?.type === "hub") return false;
+    if (s.outbound >= HUB_OUTBOUND) return false;
+    return true;
+  });
+  const orphans = candidateOrphans.filter(
+    (s) => daysSince(cardData.get(s.slug)?.created ?? "", now) >= FRESH_DAYS
+  );
+  const orphansGrace = candidateOrphans.filter(
+    (s) => daysSince(cardData.get(s.slug)?.created ?? "", now) < FRESH_DAYS
+  );
   if (orphans.length > 0) {
     sections.push(
       "## Orphans (no inbound links)\n" + orphans.map((o) => `- ${o.slug} \u2014 ${cardData.get(o.slug)?.title}`).join("\n")
+    );
+  }
+  if (orphansGrace.length > 0) {
+    sections.push(
+      `## Orphans in grace period (< ${FRESH_DAYS}d old)
+${orphansGrace.length} recently written card(s) not yet cited \u2014 no action needed.`
     );
   }
   const hubs = stats.filter((s) => s.inbound >= 10);
@@ -9472,6 +9610,7 @@ async function organizeCommand(store, lastOrganize, json2) {
     const jsonOutput = {
       stats,
       orphans: orphans.map((o) => ({ slug: o.slug, title: cardData.get(o.slug)?.title ?? o.slug })),
+      orphansGrace: orphansGrace.map((o) => ({ slug: o.slug, title: cardData.get(o.slug)?.title ?? o.slug })),
       hubs: hubs.map((h) => ({ slug: h.slug, title: cardData.get(h.slug)?.title ?? h.slug, inbound: h.inbound })),
       conflicts: conflicts.map((slug) => ({ slug, title: cardData.get(slug)?.title ?? slug })),
       recentPairs: cappedPairs
@@ -9497,11 +9636,14 @@ ${info2.content.slice(0, 300)}`;
   }
   return { output: sections.join("\n\n"), exitCode: 0 };
 }
+var HUB_OUTBOUND, FRESH_DAYS;
 var init_organize = __esm({
   "src/commands/organize.ts"() {
     "use strict";
     init_parser();
     init_formatter();
+    HUB_OUTBOUND = 5;
+    FRESH_DAYS = 7;
   }
 });
 
@@ -41007,7 +41149,7 @@ ${formatWarnings(result.warnings)}` : "";
       file_path: external_exports3.string().describe("Path to flomo HTML export file (.html or .htm)")
     })
   }, async ({ file_path }) => {
-    const { readFile: readFile10 } = await import("node:fs/promises");
+    const { readFile: readFile11 } = await import("node:fs/promises");
     const { resolve: resolve3, extname } = await import("node:path");
     const ext = extname(file_path).toLowerCase();
     if (ext !== ".html" && ext !== ".htm") {
@@ -41028,7 +41170,7 @@ ${formatWarnings(result.warnings)}` : "";
     }
     let html;
     try {
-      html = await readFile10(resolved, "utf-8");
+      html = await readFile11(resolved, "utf-8");
     } catch {
       return { content: [{ type: "text", text: `Error: Cannot read file: ${file_path}` }], isError: true };
     }
@@ -41375,6 +41517,65 @@ var init_stdio2 = __esm({
   }
 });
 
+// src/commands/mcp-config.ts
+var mcp_config_exports = {};
+__export(mcp_config_exports, {
+  configureMcp: () => configureMcp
+});
+import { readFile as readFile10, writeFile as writeFile6, mkdir as mkdir4 } from "node:fs/promises";
+import { join as join16, dirname as dirname9 } from "node:path";
+import { homedir as homedir4 } from "node:os";
+async function configureMcp(opts) {
+  const mcpServers = { memex: MCP_ENTRY };
+  if (opts.claudeCode) {
+    return await writeClaudeCodeConfig(mcpServers);
+  }
+  const output = JSON.stringify({ mcpServers }, null, 2);
+  if (opts.json) {
+    return { success: true, output };
+  }
+  return {
+    success: true,
+    output: output + "\n\nAdd the above to your MCP client config.\nFor Claude Code: memex mcp-config --claude-code"
+  };
+}
+async function writeClaudeCodeConfig(mcpServers) {
+  const settingsPath = join16(homedir4(), ".claude", "settings.json");
+  let settings = {};
+  try {
+    const raw = await readFile10(settingsPath, "utf-8");
+    settings = JSON.parse(raw);
+  } catch {
+  }
+  const existing = settings.mcpServers || {};
+  if (existing.memex) {
+    return {
+      success: true,
+      output: `memex MCP already configured in ${settingsPath}
+Current config: ${JSON.stringify(existing.memex)}`
+    };
+  }
+  settings.mcpServers = { ...existing, ...mcpServers };
+  await mkdir4(dirname9(settingsPath), { recursive: true });
+  await writeFile6(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf-8");
+  return {
+    success: true,
+    output: `\u2713 memex MCP server added to ${settingsPath}
+
+Restart Claude Code to activate. The agent will now have access to memex_recall, memex_retro, and other memory tools.`
+  };
+}
+var MCP_ENTRY;
+var init_mcp_config = __esm({
+  "src/commands/mcp-config.ts"() {
+    "use strict";
+    MCP_ENTRY = {
+      command: "memex",
+      args: ["mcp"]
+    };
+  }
+});
+
 // node_modules/commander/esm.mjs
 var import_index = __toESM(require_commander(), 1);
 var {
@@ -41400,7 +41601,7 @@ init_read();
 init_search();
 init_links();
 init_archive();
-import { join as join16, dirname as dirname9 } from "node:path";
+import { join as join17, dirname as dirname10 } from "node:path";
 import { readFileSync as readFileSync3 } from "node:fs";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 
@@ -42224,17 +42425,51 @@ ${lines.join("\n")}`;
   return { output, exitCode: 0 };
 }
 
+// src/commands/link.ts
+init_parser();
+async function linkCommand(store, from, to, context) {
+  const relationship = context.trim();
+  if (!relationship) {
+    return {
+      success: false,
+      error: "A relationship context is required: memex link <from> <to> <why>"
+    };
+  }
+  const fromPath = await store.resolve(from);
+  if (!fromPath) return { success: false, error: `Source card not found: ${from}` };
+  const toSlug = await store.resolveLink(to);
+  if (!toSlug) return { success: false, error: `Target card not found: ${to}` };
+  if (from === toSlug) return { success: false, error: "Cannot link a card to itself" };
+  const raw = await store.readCard(from);
+  const { data, content } = parseFrontmatter(raw);
+  const resolver = store.buildLinkResolver(await store.scanAll());
+  const existing = new Set(extractLinks(content).map((l) => resolver(l) ?? l));
+  if (existing.has(toSlug)) {
+    return { success: true, message: `${from} already links to ${toSlug}` };
+  }
+  data.modified = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+  if (data.created instanceof Date) {
+    data.created = data.created.toISOString().split("T")[0];
+  }
+  const newContent = `${content.trimEnd()}
+
+${relationship} [[${toSlug}]]
+`;
+  await store.writeCard(from, stringifyFrontmatter(newContent, data));
+  return { success: true, message: `Linked ${from} \u2192 ${toSlug} (${relationship})` };
+}
+
 // src/cli.ts
 init_organize();
 init_flomo();
-var __dirname3 = dirname9(fileURLToPath3(import.meta.url));
-var pkg2 = JSON.parse(readFileSync3(join16(__dirname3, "..", "package.json"), "utf-8"));
+var __dirname3 = dirname10(fileURLToPath3(import.meta.url));
+var pkg2 = JSON.parse(readFileSync3(join17(__dirname3, "..", "package.json"), "utf-8"));
 async function getStore(opts) {
   const home = await resolveMemexHome();
   await warnIfEmptyCards(home);
   const config2 = await readConfig(home);
   const nestedSlugs = opts?.nested ?? config2.nestedSlugs;
-  return new CardStore(join16(home, "cards"), join16(home, "archive"), nestedSlugs);
+  return new CardStore(join17(home, "cards"), join17(home, "archive"), nestedSlugs);
 }
 function exit(code) {
   if (process.stdout.writableLength === 0) {
@@ -42309,6 +42544,16 @@ program2.command("backlinks <slug>").description("Show all cards that link to <s
   if (result.output) process.stdout.write(result.output + "\n");
   exit(result.exitCode);
 });
+program2.command("link <from> <to> <context...>").description("Append an outbound [[wiki-link]] from <from> to <to> with a relationship clause (single-file, from\u2192to)").action(async (from, to, context) => {
+  const store = await getStore();
+  const result = await linkCommand(store, from, to, context.join(" "));
+  if (!result.success) {
+    process.stderr.write(result.error + "\n");
+    exit(1);
+    return;
+  }
+  if (result.message) process.stdout.write(result.message + "\n");
+});
 program2.command("archive <slug>").description("Move a card to archive").action(async (slug) => {
   const store = await getStore();
   const result = await archiveCommand(store, slug);
@@ -42378,6 +42623,15 @@ program2.command("mcp").description("Start MCP server (stdio transport)").action
   console.error("memex MCP server running on stdio");
   await server.connect(transport);
 });
+program2.command("mcp-config").description("Configure memex MCP server for Claude Code or other clients").option("--claude-code", "Write mcpServers entry into ~/.claude/settings.json").option("--json", "Print mcpServers JSON to stdout (for manual config)").action(async (opts) => {
+  const { configureMcp: configureMcp2 } = await Promise.resolve().then(() => (init_mcp_config(), mcp_config_exports));
+  const result = await configureMcp2(opts);
+  if (result.output) process.stdout.write(result.output + "\n");
+  if (!result.success) {
+    if (result.error) process.stderr.write(result.error + "\n");
+    exit(1);
+  }
+});
 program2.command("import [source]").description("Import memories from other tools (openclaw, ...)").option("--dry-run", "Preview without writing").option("--dir <path>", "Override source directory").action(async (source, opts) => {
   const store = await getStore();
   const result = await importCommand(store, source, opts);
@@ -42390,8 +42644,8 @@ program2.command("import [source]").description("Import memories from other tool
 program2.command("doctor").description("Check memex health and configuration").option("--check-collisions", "Check for slug collisions in basename mode").option("--verbose", "Show detailed output for warnings").option("--json", "Output results as JSON for programmatic use").option("--extra-dirs <dirs>", "Comma-separated extra directories for link resolution").action(async (opts) => {
   const home = await resolveMemexHome();
   const config2 = await readConfig(home);
-  const cardsDir = join16(home, "cards");
-  const archiveDir = join16(home, "archive");
+  const cardsDir = join17(home, "cards");
+  const archiveDir = join17(home, "archive");
   if (opts.checkCollisions) {
     const result = await doctorCommand(cardsDir, archiveDir, opts.json);
     if (result.output) process.stdout.write(result.output + "\n");
@@ -42405,8 +42659,8 @@ program2.command("doctor").description("Check memex health and configuration").o
 });
 program2.command("migrate").description("Migrate memex configuration").option("--enable-nested", "Enable nestedSlugs in config").action(async (opts) => {
   const home = await resolveMemexHome();
-  const cardsDir = join16(home, "cards");
-  const archiveDir = join16(home, "archive");
+  const cardsDir = join17(home, "cards");
+  const archiveDir = join17(home, "archive");
   if (opts.enableNested) {
     const result = await migrateCommand(home, cardsDir, archiveDir);
     if (result.output) process.stdout.write(result.output + "\n");

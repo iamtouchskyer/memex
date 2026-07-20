@@ -5,6 +5,7 @@ import { readCommand } from "../commands/read.js";
 import { writeCommand } from "../commands/write.js";
 import { linksCommand } from "../commands/links.js";
 import { archiveCommand } from "../commands/archive.js";
+import { linkCommand } from "../commands/link.js";
 import { parseFrontmatter, stringifyFrontmatter } from "../lib/parser.js";
 import { readConfig } from "../lib/config.js";
 import { HookRegistry } from "../lib/hooks.js";
@@ -152,6 +153,31 @@ export function createMemexServer(store: CardStore, home?: string): McpServer {
       return { content: [{ type: "text" as const, text: result.error! }], isError: true };
     }
     return { content: [{ type: "text" as const, text: `Card '${slug}' archived.` }] };
+  });
+
+  server.registerTool("memex_link", {
+    description: "Create a relationship link between two cards. Appends a contextual [[wikilink]] from the source card to the target. The context parameter must explain WHY the cards relate — bare links without explanation are rejected.",
+    inputSchema: z.object({
+      from: z.string().describe("Source card slug"),
+      to: z.string().describe("Target card slug"),
+      context: z.string().describe("Relationship explanation sentence"),
+    }),
+  }, async ({ from, to, context }) => {
+    if (!context.trim()) {
+      return textResult("relationship context is required", true);
+    }
+    const result = await linkCommand(store, from, to, context);
+    if (!result.success) {
+      return textResult(result.error!, true);
+    }
+    let msg = result.message!;
+    if (home) {
+      const syncResult = await autoSync(home);
+      if (syncResult && !syncResult.success) {
+        msg += `\n\n⚠️ ${syncResult.message}`;
+      }
+    }
+    return textResult(msg);
   });
 
   if (home) {

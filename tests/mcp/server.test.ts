@@ -37,7 +37,7 @@ async function teardown() {
 describe("MCP server", () => {
   afterEach(teardown);
 
-  it("lists all 12 tools", async () => {
+  it("lists all 13 tools", async () => {
     await setup();
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
@@ -45,6 +45,7 @@ describe("MCP server", () => {
       "flomo_import_parse",
       "flomo_push",
       "memex_archive",
+      "memex_link",
       "memex_links",
       "memex_organize",
       "memex_pull",
@@ -205,6 +206,46 @@ describe("MCP server", () => {
     // With 60 cards and limit clamped to 50, should show truncation
     expect(text).toContain("50 of 60");
     expect(text).toContain("cards shown");
+  });
+
+  it("memex_link creates a relationship link", async () => {
+    await setup({
+      "react-hooks": "---\ntitle: React Hooks\ncreated: 2024-01-01\n---\nSome content about hooks",
+      "state-management": "---\ntitle: State Management\ncreated: 2024-01-01\n---\nSome content about state",
+    });
+    const result = await client.callTool({
+      name: "memex_link",
+      arguments: { from: "react-hooks", to: "state-management", context: "React hooks provide a foundation for" },
+    });
+    expect(result.isError).toBeFalsy();
+    const text = (result.content as Array<{ text: string }>)[0].text;
+    expect(text).toContain("Linked react-hooks → state-management");
+  });
+
+  it("memex_link rejects missing context", async () => {
+    await setup({
+      "some-card": "---\ntitle: Some Card\ncreated: 2024-01-01\n---\nContent",
+    });
+    const result = await client.callTool({
+      name: "memex_link",
+      arguments: { from: "some-card", to: "other-card", context: "" },
+    });
+    expect(result.isError).toBe(true);
+    const text = (result.content as Array<{ text: string }>)[0].text;
+    expect(text).toContain("relationship context is required");
+  });
+
+  it("memex_link detects already-linked cards", async () => {
+    await setup({
+      "source-card": "---\ntitle: Source Card\ncreated: 2024-01-01\n---\nAlready links to [[target-card]] here",
+      "target-card": "---\ntitle: Target Card\ncreated: 2024-01-01\n---\nTarget content",
+    });
+    const result = await client.callTool({
+      name: "memex_link",
+      arguments: { from: "source-card", to: "target-card", context: "They relate because" },
+    });
+    const text = (result.content as Array<{ text: string }>)[0].text;
+    expect(text).toContain("already links to");
   });
 
 });
