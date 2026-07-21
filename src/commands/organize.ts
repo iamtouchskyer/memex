@@ -7,6 +7,22 @@ function toDateString(val: unknown): string {
   return String(val || "");
 }
 
+// A card links out to >= this many others = a directory/MOC, not a lost orphan.
+const HUB_OUTBOUND = 5;
+// Freshly written cards haven't had time to be cited; grace before nagging.
+// Keyed on `created`, NOT `modified`: any edit (including `memex link`, which
+// bumps modified) would otherwise re-arm the grace window and hide the most-
+// edited orphans forever, while a bulk import stamping modified=today would
+// falsely report the whole corpus as "healthy".
+const FRESH_DAYS = 7;
+
+function daysSince(dateStr: string, now: Date): number {
+  if (!dateStr) return Infinity; // no date → treat as old, actionable
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return Infinity;
+  return (now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24);
+}
+
 interface OrganizeResult {
   output: string;
   exitCode: number;
@@ -23,7 +39,7 @@ export async function organizeCommand(
   // Build link graph
   const outboundMap = new Map<string, string[]>();
   const inboundMap = new Map<string, string[]>();
-  const cardData = new Map<string, { title: string; modified: string; status: string; content: string }>();
+  const cardData = new Map<string, { title: string; created: string; modified: string; status: string; type: string; content: string }>();
 
   for (const card of cards) {
     inboundMap.set(card.slug, []);
@@ -36,8 +52,10 @@ export async function organizeCommand(
     outboundMap.set(card.slug, links);
     cardData.set(card.slug, {
       title: String(data.title || card.slug),
+      created: toDateString(data.created || ""),
       modified: toDateString(data.modified || ""),
       status: String(data.status || ""),
+      type: String(data.type || ""),
       content: content.trim(),
     });
 
@@ -59,12 +77,33 @@ export async function organizeCommand(
   sections.push("# Organize Report\n");
   sections.push("## Link Stats\n" + formatLinkStats(stats));
 
-  // Orphans
-  const orphans = stats.filter((s) => s.inbound === 0 && s.slug !== "index");
+  // Orphans — layered so the report only nags about cards a link can actually help.
+  // Excluded: index, type:hub (intentional inbound-orphan MOCs), high-outbound
+  // directories, and freshly written cards still inside their grace window.
+  const now = new Date();
+  const candidateOrphans = stats.filter((s) => {
+    if (s.inbound !== 0 || s.slug === "index") return false;
+    const info = cardData.get(s.slug);
+    if (info?.type === "hub") return false;
+    if (s.outbound >= HUB_OUTBOUND) return false;
+    return true;
+  });
+  const orphans = candidateOrphans.filter(
+    (s) => daysSince(cardData.get(s.slug)?.created ?? "", now) >= FRESH_DAYS,
+  );
+  const orphansGrace = candidateOrphans.filter(
+    (s) => daysSince(cardData.get(s.slug)?.created ?? "", now) < FRESH_DAYS,
+  );
   if (orphans.length > 0) {
     sections.push(
       "## Orphans (no inbound links)\n" +
       orphans.map((o) => `- ${o.slug} — ${cardData.get(o.slug)?.title}`).join("\n"),
+    );
+  }
+  if (orphansGrace.length > 0) {
+    sections.push(
+      `## Orphans in grace period (< ${FRESH_DAYS}d old)\n` +
+      `${orphansGrace.length} recently written card(s) not yet cited — no action needed.`,
     );
   }
 
@@ -143,6 +182,7 @@ export async function organizeCommand(
     const jsonOutput = {
       stats,
       orphans: orphans.map((o) => ({ slug: o.slug, title: cardData.get(o.slug)?.title ?? o.slug })),
+      orphansGrace: orphansGrace.map((o) => ({ slug: o.slug, title: cardData.get(o.slug)?.title ?? o.slug })),
       hubs: hubs.map((h) => ({ slug: h.slug, title: cardData.get(h.slug)?.title ?? h.slug, inbound: h.inbound })),
       conflicts: conflicts.map((slug) => ({ slug, title: cardData.get(slug)?.title ?? slug })),
       recentPairs: cappedPairs,

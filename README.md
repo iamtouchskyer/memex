@@ -45,10 +45,13 @@ All platforms share the same `~/.memex/cards/` directory. A card written in Clau
 |----------|---------|
 | **VS Code / Copilot** | Search "memex" in [VS Code Extensions](https://marketplace.visualstudio.com/items?itemName=touchskyer.memex-mcp) — install and done, no extra setup |
 | **Claude Code** | `/plugin marketplace add iamtouchskyer/memex` then `/plugin install memex@memex` |
+| **Claude Code (MCP fallback)** | `npm install -g @touchskyer/memex && memex mcp-config --claude-code` |
 | **Cursor** | First `npm install -g @touchskyer/memex`, then [one-click install](cursor://anysphere.cursor-deeplink/mcp/install?name=memex&config=eyJjb21tYW5kIjoibWVtZXgiLCJhcmdzIjpbIm1jcCJdfQ==) |
 | **Codex** | `npm install -g @touchskyer/memex && codex mcp add memex -- memex mcp` |
 | **Pi** | `npm install -g @touchskyer/memex && pi install npm:@touchskyer/memex` |
 | **Windsurf / others** | `npm install -g @touchskyer/memex`, then add MCP server: command `memex`, args `["mcp"]` |
+
+> **Note:** If you use Claude Code inside VS Code, follow the **Claude Code** row — not "VS Code / Copilot". The VS Code extension serves GitHub Copilot only; Claude Code has its own plugin system.
 
 That's it — no extra setup needed. The MCP tool descriptions tell your agent when to recall and retro.
 
@@ -190,10 +193,13 @@ AI 编程 agent 的持久记忆系统。让你的 agent 跨会话记住学到的
 |------|------|
 | **VS Code / Copilot** | 在 [VS Code 扩展商店](https://marketplace.visualstudio.com/items?itemName=touchskyer.memex-mcp) 搜索 "memex"——安装即用，无需其他配置 |
 | **Claude Code** | `/plugin marketplace add iamtouchskyer/memex`，然后 `/plugin install memex@memex` |
+| **Claude Code（MCP 备选）** | `npm install -g @touchskyer/memex && memex mcp-config --claude-code` |
 | **Cursor** | 先 `npm install -g @touchskyer/memex`，然后 [一键安装](cursor://anysphere.cursor-deeplink/mcp/install?name=memex&config=eyJjb21tYW5kIjoibWVtZXgiLCJhcmdzIjpbIm1jcCJdfQ==) |
 | **Codex** | `npm install -g @touchskyer/memex && codex mcp add memex -- memex mcp` |
 | **Pi** | `npm install -g @touchskyer/memex && pi install npm:@touchskyer/memex` |
 | **Windsurf / 其他** | `npm install -g @touchskyer/memex`，然后添加 MCP server：命令 `memex`，参数 `["mcp"]` |
+
+> **注意：** 如果你在 VS Code 里使用 Claude Code，请按照 **Claude Code** 那一行操作，而非"VS Code / Copilot"。VS Code 扩展仅服务于 GitHub Copilot；Claude Code 有自己的 plugin 系统。
 
 安装完成，无需额外配置。MCP 工具描述会自动告诉 agent 何时 recall 和 retro。
 
@@ -236,10 +242,13 @@ AIコーディングエージェントのための永続メモリシステム。
 |---------------|---------|
 | **VS Code / Copilot** | [VS Code 拡張機能](https://marketplace.visualstudio.com/items?itemName=touchskyer.memex-mcp)で "memex" を検索——インストールするだけ、追加設定不要 |
 | **Claude Code** | `/plugin marketplace add iamtouchskyer/memex`、その後 `/plugin install memex@memex` |
+| **Claude Code（MCPフォールバック）** | `npm install -g @touchskyer/memex && memex mcp-config --claude-code` |
 | **Cursor** | まず `npm install -g @touchskyer/memex`、その後 [ワンクリックインストール](cursor://anysphere.cursor-deeplink/mcp/install?name=memex&config=eyJjb21tYW5kIjoibWVtZXgiLCJhcmdzIjpbIm1jcCJdfQ==) |
 | **Codex** | `npm install -g @touchskyer/memex && codex mcp add memex -- memex mcp` |
 | **Pi** | `npm install -g @touchskyer/memex && pi install npm:@touchskyer/memex` |
 | **Windsurf / その他** | `npm install -g @touchskyer/memex`、その後MCP serverを追加：コマンド `memex`、引数 `["mcp"]` |
+
+> **注意:** VS Code内でClaude Codeを使用する場合は、「VS Code / Copilot」ではなく **Claude Code** の行に従ってください。VS Code拡張機能はGitHub Copilot専用です。Claude Codeには独自のプラグインシステムがあります。
 
 インストール完了、追加設定は不要です。MCPツールの説明がエージェントにリコールとレトロのタイミングを自動的に教えます。
 
@@ -290,10 +299,13 @@ AI 코딩 에이전트를 위한 영구 메모리 시스템. 에이전트가 세
 |--------|------|
 | **VS Code / Copilot** | [VS Code 확장](https://marketplace.visualstudio.com/items?itemName=touchskyer.memex-mcp)에서 "memex" 검색 — 설치하면 끝, 추가 설정 불필요 |
 | **Claude Code** | `/plugin marketplace add iamtouchskyer/memex` 후 `/plugin install memex@memex` |
+| **Claude Code (MCP 대체)** | `npm install -g @touchskyer/memex && memex mcp-config --claude-code` |
 | **Cursor** | 먼저 `npm install -g @touchskyer/memex`, 그런 다음 [원클릭 설치](cursor://anysphere.cursor-deeplink/mcp/install?name=memex&config=eyJjb21tYW5kIjoibWVtZXgiLCJhcmdzIjpbIm1jcCJdfQ==) |
 | **Codex** | `npm install -g @touchskyer/memex && codex mcp add memex -- memex mcp` |
 | **Pi** | `npm install -g @touchskyer/memex && pi install npm:@touchskyer/memex` |
 | **Windsurf / 기타** | `npm install -g @touchskyer/memex`, 그런 다음 MCP server 추가: 명령 `memex`, 인수 `["mcp"]` |
+
+> **참고:** VS Code에서 Claude Code를 사용하는 경우, "VS Code / Copilot"이 아닌 **Claude Code** 행을 따르세요. VS Code 확장은 GitHub Copilot 전용이며, Claude Code는 자체 플러그인 시스템을 사용합니다.
 
 설치 완료, 추가 설정이 필요 없습니다. MCP 도구 설명이 에이전트에게 리콜과 레트로 시점을 자동으로 알려줍니다.
 
@@ -344,10 +356,13 @@ Todas las plataformas comparten el mismo directorio `~/.memex/cards/`. Una tarje
 |------------|---------|
 | **VS Code / Copilot** | Busca "memex" en [VS Code Extensions](https://marketplace.visualstudio.com/items?itemName=touchskyer.memex-mcp) — instala y listo, sin configuración adicional |
 | **Claude Code** | `/plugin marketplace add iamtouchskyer/memex`, luego `/plugin install memex@memex` |
+| **Claude Code (MCP alternativo)** | `npm install -g @touchskyer/memex && memex mcp-config --claude-code` |
 | **Cursor** | Primero `npm install -g @touchskyer/memex`, luego [instalación con un clic](cursor://anysphere.cursor-deeplink/mcp/install?name=memex&config=eyJjb21tYW5kIjoibWVtZXgiLCJhcmdzIjpbIm1jcCJdfQ==) |
 | **Codex** | `npm install -g @touchskyer/memex && codex mcp add memex -- memex mcp` |
 | **Pi** | `npm install -g @touchskyer/memex && pi install npm:@touchskyer/memex` |
 | **Windsurf / otros** | `npm install -g @touchskyer/memex`, luego agregar MCP server: comando `memex`, args `["mcp"]` |
+
+> **Nota:** Si usas Claude Code dentro de VS Code, sigue la fila de **Claude Code**, no "VS Code / Copilot". La extensión de VS Code es solo para GitHub Copilot; Claude Code tiene su propio sistema de plugins.
 
 Instalación completa, no se requiere configuración adicional. Las descripciones de las herramientas MCP le dicen automáticamente a tu agente cuándo hacer recall y retro.
 

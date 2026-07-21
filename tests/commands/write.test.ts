@@ -118,6 +118,68 @@ Remote: https://user:secret1234567890@github.com/org/repo.git`;
     expect(written).not.toContain("secret1234567890");
   });
 
+  it("suggests linking a new card to a relevant existing card", async () => {
+    await writeCommand(
+      store,
+      "jwt-migration",
+      "---\ntitle: JWT Migration\ncreated: 2026-01-01\nsource: retro\ntags: jwt, auth\n---\n\nMoving to stateless JWT tokens.",
+    );
+
+    const result = await writeCommand(
+      store,
+      "jwt-revocation",
+      "---\ntitle: JWT Revocation\ncreated: 2026-01-01\nsource: retro\ntags: jwt, auth\n---\n\nHow to revoke a JWT token when using stateless auth.",
+    );
+    expect(result.success).toBe(true);
+    const hint = (result.warnings ?? []).find((w) => w.includes("[[jwt-migration]]"));
+    expect(hint).toBeTruthy();
+  });
+
+  it("does not suggest links when overwriting an existing card", async () => {
+    await writeCommand(
+      store,
+      "jwt-migration",
+      "---\ntitle: JWT Migration\ncreated: 2026-01-01\nsource: retro\ntags: jwt\n---\n\nStateless JWT tokens.",
+    );
+    await writeCommand(
+      store,
+      "jwt-notes",
+      "---\ntitle: JWT Notes\ncreated: 2026-01-01\nsource: retro\ntags: jwt\n---\n\nJWT token notes.",
+    );
+
+    // Overwrite jwt-notes: should NOT re-run suggestions
+    const result = await writeCommand(
+      store,
+      "jwt-notes",
+      "---\ntitle: JWT Notes\ncreated: 2026-01-01\nsource: retro\ntags: jwt\n---\n\nMore JWT token notes.",
+    );
+    const hint = (result.warnings ?? []).find((w) => w.includes("Link candidates"));
+    expect(hint).toBeFalsy();
+  });
+
+  it("still succeeds when the advisory suggestion scan throws", async () => {
+    // Seed one existing card so a new write would normally trigger suggestLinks.
+    await writeCommand(
+      store,
+      "seed",
+      "---\ntitle: Seed\ncreated: 2026-01-01\nsource: retro\ntags: jwt\n---\n\nJWT token seed.",
+    );
+    // Make the candidate scan blow up AFTER the durable write has happened.
+    const spy = vi.spyOn(store, "readCard").mockRejectedValue(new Error("boom"));
+
+    const result = await writeCommand(
+      store,
+      "jwt-new",
+      "---\ntitle: JWT New\ncreated: 2026-01-01\nsource: retro\ntags: jwt\n---\n\nNew JWT token card.",
+    );
+    spy.mockRestore();
+
+    expect(result.success).toBe(true);
+    // Card must be durably on disk despite the advisory failure.
+    const written = await readFile(join(tmpDir, "cards", "jwt-new.md"), "utf-8");
+    expect(written).toContain("title: JWT New");
+  });
+
   it("does not call autoSync", async () => {
     const syncMod = await import("../../src/lib/sync.js");
     const spy = vi.spyOn(syncMod, "autoSync");

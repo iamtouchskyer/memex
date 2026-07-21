@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { join } from "path";
-import { existsSync, readFileSync, readdirSync } from "fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from "fs";
 import { execSync } from "child_process";
 
 /** Sort version strings like "v18.0.0", "v20.1.0" by semver (highest last).
@@ -99,4 +99,44 @@ export function activate(context: vscode.ExtensionContext) {
       resolveMcpServerDefinition: async (server) => server,
     })
   );
+
+  // Auto-create .mcp.json in workspace for Claude Code compatibility
+  ensureClaudeCodeMcp(nodeBin, cliPath);
+}
+
+/**
+ * Write memex MCP server entry to .mcp.json in each workspace folder.
+ * This allows Claude Code (which doesn't read vscode.lm) to discover memex.
+ * Only writes if memex key is absent — safe to run repeatedly.
+ */
+function ensureClaudeCodeMcp(nodeBin: string, cliPath: string): void {
+  const workspaceFolders = vscode.workspace.workspaceFolders;
+  if (!workspaceFolders?.length) return;
+
+  for (const folder of workspaceFolders) {
+    const mcpJsonPath = join(folder.uri.fsPath, ".mcp.json");
+    let config: Record<string, unknown> = {};
+
+    if (existsSync(mcpJsonPath)) {
+      try {
+        config = JSON.parse(readFileSync(mcpJsonPath, "utf-8"));
+      } catch {
+        continue; // don't corrupt an existing file
+      }
+    }
+
+    const servers = (config.mcpServers ?? {}) as Record<string, unknown>;
+    if (servers.memex) continue; // already configured
+
+    servers.memex = { type: "stdio", command: nodeBin, args: [cliPath, "mcp"] };
+    config.mcpServers = servers;
+
+    try {
+      const dir = folder.uri.fsPath;
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+      writeFileSync(mcpJsonPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
+    } catch {
+      // Non-critical — don't block extension activation
+    }
+  }
 }

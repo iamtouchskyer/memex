@@ -8935,13 +8935,15 @@ async function detectRemoteBranch(home) {
 }
 async function autoSync(home) {
   const config2 = await readSyncConfig(home);
-  if (!config2.auto || !config2.remote) return;
+  if (!config2.auto || !config2.remote) return null;
   try {
     const adapter = new GitAdapter(home);
-    await adapter.sync();
+    return await adapter.sync();
   } catch (err) {
-    process.stderr.write(`sync warning: ${err.message}
+    const msg = err.message || "unknown sync error";
+    process.stderr.write(`sync warning: ${msg}
 `);
+    return { success: false, message: `Sync failed: ${msg}` };
   }
 }
 async function autoFetch(home) {
@@ -9157,7 +9159,7 @@ Then resolve conflicts and run \`memex sync --init\` again.`
         await writeSyncConfig(this.home, {
           remote: url2,
           adapter: "git",
-          auto: false
+          auto: true
         });
         return url2;
       }
@@ -40928,11 +40930,27 @@ function registerOperations(server, store, hooks, home, getClientName) {
     }
     await hooks.run("post", "retro");
     const config2 = await readSyncConfig(home);
-    const tip = !config2.remote ? "\n\nTip: To sync cards across devices, tell the user to run in terminal: npx @touchskyer/memex sync --init && npx @touchskyer/memex sync on" : "";
+    let syncInfo = "";
+    if (!config2.remote) {
+      syncInfo = "\n\nTip: To sync cards across devices, tell the user to run in terminal: npx @touchskyer/memex sync --init";
+    } else if (config2.auto) {
+      const { execFile: execFileCb2 } = await import("node:child_process");
+      const { promisify: promisify2 } = await import("node:util");
+      const execFile3 = promisify2(execFileCb2);
+      try {
+        const { stdout } = await execFile3("git", ["-C", home, "status", "--short", "cards/"], { timeout: 5e3 });
+        if (stdout.trim()) {
+          syncInfo = `
+
+\u26A0\uFE0F Sync may have failed: card file not committed. Run \`memex sync push\` manually.`;
+        }
+      } catch {
+      }
+    }
     const warningText = result.warnings?.length ? `
 
 ${formatWarnings(result.warnings)}` : "";
-    return textResult(`Card '${slug}' saved.${warningText}${tip}`);
+    return textResult(`Card '${slug}' saved.${warningText}${syncInfo}`);
   });
   server.registerTool("memex_organize", {
     description: "Analyze the card network for maintenance. Returns link stats, orphans, hubs, unresolved conflicts, and recently modified cards paired with their neighbors for contradiction detection. Call this periodically to keep the knowledge graph healthy.",
@@ -41174,7 +41192,19 @@ ${formatWarnings(warnings)}` : "";
     if (!result.success) {
       return textResult(result.error, true);
     }
-    return writeSuccess(slug, result.warnings);
+    let syncWarning = "";
+    if (home) {
+      const syncResult = await autoSync(home);
+      if (syncResult && !syncResult.success) {
+        syncWarning = `
+
+\u26A0\uFE0F ${syncResult.message}`;
+      }
+    }
+    const warningText = result.warnings?.length ? `
+
+${formatWarnings(result.warnings)}` : "";
+    return textResult(`Card '${slug}' written successfully.${warningText}${syncWarning}`);
   });
   server.registerTool("memex_links", {
     description: "Low-level link stats. Prefer memex_organize for maintenance workflows.",
@@ -41207,8 +41237,12 @@ ${formatWarnings(warnings)}` : "";
     hooks.on("pre:recall", () => autoFetch(home));
     hooks.on("pre:retro", () => autoFetch(home));
     hooks.on("pre:organize", () => autoFetch(home));
-    hooks.on("post:retro", () => autoSync(home));
-    hooks.on("post:organize", () => autoSync(home));
+    hooks.on("post:retro", async () => {
+      await autoSync(home);
+    });
+    hooks.on("post:organize", async () => {
+      await autoSync(home);
+    });
     registerOperations(server, store, hooks, home, () => clientName);
   }
   return server;

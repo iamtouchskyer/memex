@@ -19,6 +19,7 @@ import { importCommand } from "./commands/import.js";
 import { doctorCommand, doctorRunAll } from "./commands/doctor.js";
 import { migrateCommand } from "./commands/migrate.js";
 import { backlinksCommand } from "./commands/backlinks.js";
+import { linkCommand } from "./commands/link.js";
 import { organizeCommand } from "./commands/organize.js";
 import { flomoConfigCommand, flomoPushCommand, flomoImportCommand } from "./commands/flomo.js";
 
@@ -147,6 +148,20 @@ program
   });
 
 program
+  .command("link <from> <to> <context...>")
+  .description("Append an outbound [[wiki-link]] from <from> to <to> with a relationship clause (single-file, from→to)")
+  .action(async (from: string, to: string, context: string[]) => {
+    const store = await getStore();
+    const result = await linkCommand(store, from, to, context.join(" "));
+    if (!result.success) {
+      process.stderr.write(result.error! + "\n");
+      exit(1);
+      return;
+    }
+    if (result.message) process.stdout.write(result.message + "\n");
+  });
+
+program
   .command("archive <slug>")
   .description("Move a card to archive")
   .action(async (slug: string) => {
@@ -251,6 +266,21 @@ program
     const transport = new StdioServerTransport();
     console.error("memex MCP server running on stdio");
     await server.connect(transport);
+  });
+
+program
+  .command("mcp-config")
+  .description("Configure memex MCP server for Claude Code or other clients")
+  .option("--claude-code", "Write mcpServers entry into ~/.claude/settings.json")
+  .option("--json", "Print mcpServers JSON to stdout (for manual config)")
+  .action(async (opts: { claudeCode?: boolean; json?: boolean }) => {
+    const { configureMcp } = await import("./commands/mcp-config.js");
+    const result = await configureMcp(opts);
+    if (result.output) process.stdout.write(result.output + "\n");
+    if (!result.success) {
+      if (result.error) process.stderr.write(result.error + "\n");
+      exit(1);
+    }
   });
 
 program
