@@ -207,10 +207,23 @@ export default function memexExtension(pi: ExtensionAPI) {
         return textResult(indexRes.stdout);
       }
 
-      const listRes = await memex(["search"]);
+      // CLI v0.3.x requires --list flag to list all cards (was implicit pre-0.3.x)
+      const listRes = await memex(["search", "--list"]);
       if (!listRes.ok) return textResult(listRes.stderr, true);
+
+      const stdout = listRes.stdout || "";
+
+      // Defensive: if CLI returns guidance text anyway (e.g. help/usage),
+      // treat it as no cards exist — don't confuse the agent.
+      const isUsageHelp =
+        !stdout ||
+        stdout.startsWith("No query provided") ||
+        stdout.includes("To search your knowledge base:");
+
       return textResult(
-        listRes.stdout || "No cards yet. This is a fresh memory.",
+        isUsageHelp
+          ? "No cards yet. This is a fresh memory."
+          : stdout,
       );
     },
   });
@@ -292,7 +305,12 @@ export default function memexExtension(pi: ExtensionAPI) {
     async execute(_toolCallId, params) {
       const { query, limit, semantic } = params as { query?: string; limit?: number; semantic?: boolean };
       const args = ["search"];
-      if (query) args.push(query);
+      if (query) {
+        args.push(query);
+      } else {
+        // CLI v0.3.x requires --list flag to list all cards (was implicit pre-0.3.x)
+        args.push("--list");
+      }
       if (limit) args.push("--limit", String(limit));
       if (semantic) args.push("--semantic");
 
@@ -429,7 +447,8 @@ export default function memexExtension(pi: ExtensionAPI) {
   pi.registerCommand("memex", {
     description: "Show memex status and card count",
     handler: async (_args, ctx) => {
-      const res = await memex(["search"]);
+      // CLI v0.3.x requires --list to list all cards (was implicit pre-0.3.x)
+      const res = await memex(["search", "--list"]);
       if (!res.ok) {
         ctx.ui.notify(
           "Memex CLI not found. Run: npm install -g @touchskyer/memex",
