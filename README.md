@@ -99,14 +99,22 @@ memex serve --local
 ### CLI reference
 
 ```bash
-memex search [query]          # search cards, or list all
+memex search [query]          # search cards (ranked), or guidance / --list
 memex read <slug>             # read a card
-memex write <slug>            # write a card (stdin)
-memex links [slug]            # link graph stats
-memex archive <slug>          # archive a card
-memex serve                   # visual timeline UI
-memex sync                    # sync via git
+memex write <slug>            # write a card (content via stdin)
+memex links [slug]            # link graph stats, or one card's links
+memex backlinks <slug>        # cards linking to <slug> via [[wiki-links]]
+memex link <from> <to> <ctx>  # append an outbound [[wiki-link]] with context
+memex archive <slug>          # move a card to the archive
+memex organize                # analyze network: orphans, hubs, conflicts
+memex serve                   # visual timeline UI (web)
+memex sync                    # sync via git (--init / --status / on|off)
+memex import [source]         # import memories from other tools (openclaw, ...)
 memex mcp                     # start MCP server (stdio)
+memex mcp-config              # configure MCP for Claude Code / other clients
+memex doctor                  # check memex health and configuration
+memex migrate                 # migrate configuration (e.g. --enable-nested)
+memex flomo ...               # flomo integration: config / push / import
 ```
 
 ### How it works
