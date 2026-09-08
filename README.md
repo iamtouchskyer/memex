@@ -21,12 +21,12 @@ No vector database, no embeddings — just markdown files your agent (and you) c
 | Platform | Integration | Experience |
 |----------|------------|------------|
 | **Claude Code** | Plugin (hooks + skills) | Best — auto-recall, slash commands, SessionStart hook |
-| **VS Code / Copilot** | MCP Server | 10 MCP tools, zero config |
-| **Cursor** | MCP Server | 10 MCP tools, zero config |
-| **Codex** | MCP Server | 10 MCP tools, zero config |
-| **Windsurf** | MCP Server | 10 MCP tools, zero config |
+| **VS Code / Copilot** | MCP Server | 12 MCP tools, zero config |
+| **Cursor** | MCP Server | 12 MCP tools, zero config |
+| **Codex** | MCP Server | 12 MCP tools, zero config |
+| **Windsurf** | MCP Server | 12 MCP tools, zero config |
 | **Pi** | Extension (custom tools + hooks) | 8 tools, auto-recall hook, slash commands |
-| **Any MCP client** | MCP Server | 10 MCP tools, zero config |
+| **Any MCP client** | MCP Server | 12 MCP tools, zero config |
 
 All platforms share the same `~/.memex/cards/` directory. A card written in Claude Code is instantly available in Cursor, Codex, or any other client.
 
@@ -177,12 +177,12 @@ AI 编程 agent 的持久记忆系统。让你的 agent 跨会话记住学到的
 | 平台 | 集成方式 | 体验 |
 |------|---------|------|
 | **Claude Code** | Plugin（hooks + skills） | 最佳——自动回顾、斜杠命令、SessionStart hook |
-| **VS Code / Copilot** | MCP Server | 10 个 MCP 工具，零配置 |
-| **Cursor** | MCP Server | 10 个 MCP 工具，零配置 |
-| **Codex** | MCP Server | 10 个 MCP 工具，零配置 |
-| **Windsurf** | MCP Server | 10 个 MCP 工具，零配置 |
+| **VS Code / Copilot** | MCP Server | 12 个 MCP 工具，零配置 |
+| **Cursor** | MCP Server | 12 个 MCP 工具，零配置 |
+| **Codex** | MCP Server | 12 个 MCP 工具，零配置 |
+| **Windsurf** | MCP Server | 12 个 MCP 工具，零配置 |
 | **Pi** | Extension（自定义工具 + hooks） | 8 个工具，自动回顾 hook，斜杠命令 |
-| **任何 MCP 客户端** | MCP Server | 10 个 MCP 工具，零配置 |
+| **任何 MCP 客户端** | MCP Server | 12 个 MCP 工具，零配置 |
 
 所有平台共享同一个 `~/.memex/cards/` 目录。在 Claude Code 中写的卡片，在 Cursor、Codex 或其他客户端中即刻可用。
 
@@ -226,12 +226,12 @@ AIコーディングエージェントのための永続メモリシステム。
 | プラットフォーム | 統合方式 | 体験 |
 |---------------|---------|------|
 | **Claude Code** | Plugin（hooks + skills） | 最高——自動リコール、スラッシュコマンド、SessionStart hook |
-| **VS Code / Copilot** | MCP Server | 10 MCPツール、設定不要 |
-| **Cursor** | MCP Server | 10 MCPツール、設定不要 |
-| **Codex** | MCP Server | 10 MCPツール、設定不要 |
-| **Windsurf** | MCP Server | 10 MCPツール、設定不要 |
+| **VS Code / Copilot** | MCP Server | 12 MCPツール、設定不要 |
+| **Cursor** | MCP Server | 12 MCPツール、設定不要 |
+| **Codex** | MCP Server | 12 MCPツール、設定不要 |
+| **Windsurf** | MCP Server | 12 MCPツール、設定不要 |
 | **Pi** | Extension（カスタムツール + hooks） | 8ツール、自動リコールhook、スラッシュコマンド |
-| **任意のMCPクライアント** | MCP Server | 10 MCPツール、設定不要 |
+| **任意のMCPクライアント** | MCP Server | 12 MCPツール、設定不要 |
 
 すべてのプラットフォームが同じ `~/.memex/cards/` ディレクトリを共有します。Claude Codeで書いたカードは、Cursor、Codex、その他のクライアントですぐに利用できます。
 
@@ -340,12 +340,12 @@ Sin base de datos vectorial, sin embeddings — solo archivos markdown que tu ag
 | Plataforma | Integración | Experiencia |
 |------------|------------|-------------|
 | **Claude Code** | Plugin (hooks + skills) | Mejor — auto-recall, comandos slash, SessionStart hook |
-| **VS Code / Copilot** | MCP Server | 10 herramientas MCP, sin configuración |
-| **Cursor** | MCP Server | 10 herramientas MCP, sin configuración |
-| **Codex** | MCP Server | 10 herramientas MCP, sin configuración |
-| **Windsurf** | MCP Server | 10 herramientas MCP, sin configuración |
+| **VS Code / Copilot** | MCP Server | 12 herramientas MCP, sin configuración |
+| **Cursor** | MCP Server | 12 herramientas MCP, sin configuración |
+| **Codex** | MCP Server | 12 herramientas MCP, sin configuración |
+| **Windsurf** | MCP Server | 12 herramientas MCP, sin configuración |
 | **Pi** | Extension (herramientas personalizadas + hooks) | 8 herramientas, hook de auto-recall, comandos slash |
-| **Cualquier cliente MCP** | MCP Server | 10 herramientas MCP, sin configuración |
+| **Cualquier cliente MCP** | MCP Server | 12 herramientas MCP, sin configuración |
 
 Todas las plataformas comparten el mismo directorio `~/.memex/cards/`. Una tarjeta escrita en Claude Code está disponible instantáneamente en Cursor, Codex o cualquier otro cliente.
 
