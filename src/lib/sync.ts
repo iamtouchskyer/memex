@@ -172,15 +172,9 @@ export class GitAdapter implements SyncAdapter {
           "Provide a repo URL or install gh CLI (https://cli.github.com)."
         );
       }
-      // Check if gh is authenticated
-      try {
-        await execFile("gh", ["auth", "status"]);
-      } catch {
-        throw new Error(
-          "gh CLI is not authenticated. Run `gh auth login` first."
-        );
-      }
-      // Try to reuse existing repo first, create only if it doesn't exist
+      // Probe the *active* gh account directly. Don't use `gh auth status`:
+      // it exits non-zero when any configured account has a stale token, even
+      // when the active one is perfectly usable.
       let ghUser: string;
       try {
         const { stdout: userOut } = await execFile("gh", [
@@ -188,8 +182,14 @@ export class GitAdapter implements SyncAdapter {
         ]);
         ghUser = userOut.trim();
       } catch {
+        throw new Error(
+          "gh CLI is not authenticated. Run `gh auth login` first."
+        );
+      }
+      if (!ghUser) {
         throw new Error("Cannot determine GitHub username. Ensure `gh auth login` is complete.");
       }
+      // Try to reuse existing repo first, create only if it doesn't exist
       try {
         const { stdout } = await execFile("gh", [
           "repo", "view", `${ghUser}/memex-cards`, "--json", "url", "-q", ".url",
