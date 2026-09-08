@@ -80,6 +80,9 @@ jobs:
             --notes-file /tmp/release-notes.txt
 
       - name: Publish to npm
-        run: npm publish --provenance --access public
+        # --provenance requires an npm granular token with provenance enabled;
+        # the classic NPM_TOKEN secret 404s on it (v0.4.0 release failed here
+        # and shipped via manual publish). Re-add only with a granular token.
+        run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
