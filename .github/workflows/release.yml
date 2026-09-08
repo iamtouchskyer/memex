@@ -54,7 +54,7 @@ jobs:
       - name: Commit and tag
         run: |
           VERSION=${{ steps.bump.outputs.version }}
-          git add package.json .claude-plugin/plugin.json AGENTS.md CLAUDE.md GEMINI.md .cursorrules .windsurfrules
+          git add dist package.json .claude-plugin/plugin.json AGENTS.md CLAUDE.md GEMINI.md .cursorrules .windsurfrules
           git commit -m "release: v${VERSION}"
           git tag "v${VERSION}"
           git push origin main --tags

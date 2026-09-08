@@ -9090,13 +9090,6 @@ var init_sync = __esm({
               "Provide a repo URL or install gh CLI (https://cli.github.com)."
             );
           }
-          try {
-            await execFile("gh", ["auth", "status"]);
-          } catch {
-            throw new Error(
-              "gh CLI is not authenticated. Run `gh auth login` first."
-            );
-          }
           let ghUser;
           try {
             const { stdout: userOut } = await execFile("gh", [
@@ -9107,6 +9100,11 @@ var init_sync = __esm({
             ]);
             ghUser = userOut.trim();
           } catch {
+            throw new Error(
+              "gh CLI is not authenticated. Run `gh auth login` first."
+            );
+          }
+          if (!ghUser) {
             throw new Error("Cannot determine GitHub username. Ensure `gh auth login` is complete.");
           }
           try {
