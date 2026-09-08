@@ -45,10 +45,11 @@ jobs:
           VERSION=$(node -p "require('./package.json').version")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Sync plugin.json version
+      - name: Sync plugin.json and server.json versions
         run: |
           VERSION=${{ steps.bump.outputs.version }}
           jq --arg v "$VERSION" '.version = $v' .claude-plugin/plugin.json > tmp.json && mv tmp.json .claude-plugin/plugin.json
+          jq --arg v "$VERSION" '.version = $v | .packages[0].version = $v' server.json > tmp.json && mv tmp.json server.json
 
       - name: Commit and tag
         run: |

@@ -6,12 +6,12 @@
     "url": "https://github.com/iamtouchskyer/memex",
     "source": "github"
   },
-  "version": "0.4.0",
+  "version": "0.4.1",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@touchskyer/memex",
-      "version": "0.4.0",
+      "version": "0.4.1",
       "transport": {
         "type": "stdio",
         "args": ["mcp"]
