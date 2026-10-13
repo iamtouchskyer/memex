@@ -3,7 +3,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createMemexServer } from "../../src/mcp/server.js";
 import { CardStore } from "../../src/lib/store.js";
-import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -138,6 +138,27 @@ describe("MCP server", () => {
     const readResult = await client.callTool({ name: "memex_read", arguments: { slug: "new-card" } });
     const text = (readResult.content as Array<{ text: string }>)[0].text;
     expect(text).toContain("New Card");
+  });
+
+  it("memex_write keeps created as YYYY-MM-DD west of UTC", async () => {
+    const originalTz = process.env.TZ;
+    process.env.TZ = "America/Los_Angeles";
+    try {
+      await setup();
+      const content = "---\ntitle: Old Note\ncreated: 2025-01-15\nsource: retro\n---\nOld body about jwt";
+      const writeResult = await client.callTool({ name: "memex_write", arguments: { slug: "old-note", content } });
+      expect(writeResult.isError).toBeFalsy();
+
+      const raw = await readFile(join(tmpDir, "cards", "old-note.md"), "utf-8");
+      expect(raw).toMatch(/^created: 2025-01-15$/m);
+
+      const recall = await client.callTool({ name: "memex_recall", arguments: { query: "jwt", before: "2026-01-01" } });
+      const text = (recall.content as Array<{ text: string }>)[0].text;
+      expect(text).toContain("old-note");
+    } finally {
+      if (originalTz === undefined) delete process.env.TZ;
+      else process.env.TZ = originalTz;
+    }
   });
 
   it("memex_write rejects actual token values", async () => {
