@@ -26,7 +26,11 @@ export function stringifyFrontmatter(
   const yamlLines: string[] = [];
   for (const [key, value] of Object.entries(data)) {
     if (value === undefined || value === null) continue;
-    const str = String(value).replace(/\n/g, " ").trim();
+    // gray-matter parses bare YAML dates (2025-01-15) as UTC-midnight Dates;
+    // String(date) would give a local-time string with the wrong day west of UTC
+    const str = (value instanceof Date ? value.toISOString().split("T")[0] : String(value))
+      .replace(/\n/g, " ")
+      .trim();
     if (str === "" || /[:#{}[\],&*?|>!%@`']/.test(str)) {
       yamlLines.push(`${key}: '${str.replace(/'/g, "''")}'`);
     } else {
