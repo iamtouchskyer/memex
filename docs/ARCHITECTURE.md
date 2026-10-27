@@ -308,6 +308,11 @@ npm run test:watch    # vitest watch mode
 | `ollamaModel` | string | `nomic-embed-text` | |
 | `ollamaBaseUrl` | string | `http://localhost:11434` | |
 | `localModelPath` | string | HuggingFace URI | |
+| `decisionProvider` | `"systemone"` | — | Optional System-1 decision provider |
+| `decisionBaseUrl` | string | env `MEMEX_DECISION_BASE_URL` | Base URL for `/v1/systemone` |
+| `decisionApiKey` | string | env `MEMEX_DECISION_API_KEY` | Prefer env or key file |
+| `decisionApiKeyPath` | string | env `MEMEX_DECISION_API_KEY_FILE` | Local key/env file path |
+| `decisionModel` | string | `"microsoft-decision-1"` | Decision model identifier |
 | `experimental` | object | — | Experimental feature flags (see below) |
 
 #### Experimental Flags
@@ -317,6 +322,7 @@ The `experimental` field is an optional object for gating features that are not 
 | Flag | Type | Default | Notes |
 |------|------|---------|-------|
 | `agenticMemory` | boolean | `false` | Enables the A-MEM-inspired agentic memory skill workflow. Only `true` activates; `false`, `null`, missing, or non-boolean values are treated as disabled. |
+| `systemOneMemory` | boolean | `false` | Enables Jev-Mem-inspired System-1 decision controllers (`microsoft-decision-1` via `/v1/systemone`) for write-time action/link verification, search reranking/gating, and organize pair inspection. |
 
 Example `.memexrc` with experimental flags:
 
@@ -344,6 +350,10 @@ When `agenticMemory` is enabled, agents may use the `memex-agentic-memory` skill
 | `MEMEX_EMBEDDING_PROVIDER` | Force provider type |
 | `MEMEX_OLLAMA_MODEL` | Ollama model override |
 | `MEMEX_OLLAMA_BASE_URL` | Ollama endpoint override |
+| `MEMEX_DECISION_BASE_URL` | System-1 decision endpoint base URL |
+| `MEMEX_DECISION_API_KEY` | System-1 decision API key |
+| `MEMEX_DECISION_API_KEY_FILE` | System-1 decision key/env file path |
+| `MEMEX_DECISION_MODEL` | System-1 decision model override (default `microsoft-decision-1`) |
 
 ## 13. Key Implementation Details
 

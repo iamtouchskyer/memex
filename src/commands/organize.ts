@@ -1,6 +1,13 @@
 import { CardStore } from "../lib/store.js";
 import { parseFrontmatter, extractLinks } from "../lib/parser.js";
 import { formatLinkStats } from "../lib/formatter.js";
+import type { MemexConfig } from "../lib/config.js";
+import {
+  createDecisionProvider,
+  inspectPairsWithSystemOne,
+  type DecisionProvider,
+  type PairInspectionResult,
+} from "../lib/systemone.js";
 
 function toDateString(val: unknown): string {
   if (val instanceof Date) return val.toISOString().split("T")[0];
@@ -23,15 +30,23 @@ function daysSince(dateStr: string, now: Date): number {
   return (now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24);
 }
 
+export interface OrganizeOptions {
+  config?: MemexConfig;
+  decision?: boolean;
+  _decisionProvider?: DecisionProvider;
+}
+
 interface OrganizeResult {
   output: string;
   exitCode: number;
+  pairDecisions?: PairInspectionResult[];
 }
 
 export async function organizeCommand(
   store: CardStore,
   lastOrganize: string | null,
   json?: boolean,
+  options: OrganizeOptions = {},
 ): Promise<OrganizeResult> {
   const cards = await store.scanAll();
   if (cards.length === 0) return { output: "No cards yet.", exitCode: 0 };
@@ -178,6 +193,39 @@ export async function organizeCommand(
   // Cap at 20 pairs
   const cappedPairs = recentPairs.slice(0, 20);
 
+  let pairDecisions: PairInspectionResult[] | undefined;
+  const useDecision =
+    options.decision === true ||
+    options.config?.experimental?.systemOneMemory === true ||
+    Boolean(options._decisionProvider);
+
+  if (useDecision && cappedPairs.length > 0) {
+    try {
+      const provider =
+        options._decisionProvider ??
+        createDecisionProvider({
+          apiKey: options.config?.decisionApiKey,
+          apiKeyPath: options.config?.decisionApiKeyPath,
+          baseUrl: options.config?.decisionBaseUrl,
+          model: options.config?.decisionModel,
+        });
+      const pairInputs = cappedPairs.map((p) => {
+        const info1 = cardData.get(p.slug1)!;
+        const info2 = cardData.get(p.slug2)!;
+        return {
+          ...p,
+          created1: info1.created,
+          created2: info2.created,
+          content1: info1.content,
+          content2: info2.content,
+        };
+      });
+      pairDecisions = await inspectPairsWithSystemOne(provider, pairInputs);
+    } catch {
+      // Fallback if decision provider fails
+    }
+  }
+
   if (json) {
     const jsonOutput = {
       stats,
@@ -186,16 +234,21 @@ export async function organizeCommand(
       hubs: hubs.map((h) => ({ slug: h.slug, title: cardData.get(h.slug)?.title ?? h.slug, inbound: h.inbound })),
       conflicts: conflicts.map((slug) => ({ slug, title: cardData.get(slug)?.title ?? slug })),
       recentPairs: cappedPairs,
+      ...(pairDecisions ? { pairDecisions } : {}),
     };
-    return { output: JSON.stringify(jsonOutput, null, 2), exitCode: 0 };
+    return { output: JSON.stringify(jsonOutput, null, 2), exitCode: 0, pairDecisions };
   }
 
   if (cappedPairs.length > 0) {
-    const pairSections = cappedPairs.map((p) => {
+    const pairSections = cappedPairs.map((p, idx) => {
       const info1 = cardData.get(p.slug1)!;
       const info2 = cardData.get(p.slug2)!;
+      const dec = pairDecisions?.[idx];
+      const badge = dec
+        ? ` [${dec.verdict}, attn=${dec.attentionProbability.toFixed(2)}]`
+        : "";
       return (
-        `### ${p.slug1} ↔ ${p.slug2}\n` +
+        `### ${p.slug1} ↔ ${p.slug2}${badge}\n` +
         `**${p.slug1}** (${p.title1}):\n${info1.content.slice(0, 300)}\n\n` +
         `**${p.slug2}** (${p.title2}):\n${info2.content.slice(0, 300)}`
       );
@@ -209,5 +262,5 @@ export async function organizeCommand(
     );
   }
 
-  return { output: sections.join("\n\n"), exitCode: 0 };
+  return { output: sections.join("\n\n"), exitCode: 0, pairDecisions };
 }

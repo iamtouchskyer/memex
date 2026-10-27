@@ -16,6 +16,12 @@ import {
   sortScoredMatches,
   type ScoredMatch,
 } from "../lib/scoring.js";
+import {
+  createDecisionProvider,
+  rerankWithSystemOne,
+  type DecisionProvider,
+  type RerankSearchResult,
+} from "../lib/systemone.js";
 import { join } from "node:path";
 import { formatWarnings, prepareMemexInput, type SensitiveInputResult } from "../lib/sensitive-input.js";
 
@@ -38,6 +44,10 @@ interface SearchOptions {
   compact?: boolean;
   /** Override embedding provider (for testing). */
   _embeddingProvider?: EmbeddingProvider;
+  /** Rerank and filter candidates via System-1 decision model. */
+  rerank?: boolean;
+  /** Override decision provider (for testing). */
+  _decisionProvider?: DecisionProvider;
   filter?: ManifestFilter;
   /** When true with no query, list cards instead of showing guidance. */
   list?: boolean;
@@ -48,6 +58,7 @@ interface SearchResult {
   exitCode: number;
   totalCount?: number;
   warnings?: string[];
+  rerank?: RerankSearchResult;
 }
 
 export async function searchCommand(store: CardStore, query: string | undefined, options: SearchOptions = {}): Promise<SearchResult> {
@@ -256,7 +267,65 @@ async function keywordSearch(
   if (scored.length === 0) return { output: "", exitCode: 0 };
 
   sortScoredMatches(scored);
-  const topCards = scored.slice(0, limit);
+
+  const useRerank =
+    options.rerank === true ||
+    options.config?.experimental?.systemOneMemory === true ||
+    Boolean(options._decisionProvider);
+
+  let topCards = scored.slice(0, limit);
+  let rerankData: RerankSearchResult | undefined;
+
+  if (useRerank && limit > 0) {
+    try {
+      const provider =
+        options._decisionProvider ??
+        createDecisionProvider({
+          apiKey: options.config?.decisionApiKey,
+          apiKeyPath: options.config?.decisionApiKeyPath,
+          baseUrl: options.config?.decisionBaseUrl,
+          model: options.config?.decisionModel,
+        });
+
+      const poolSize = Math.min(scored.length, Math.max(limit * 3, 18));
+      const poolMatches = scored.slice(0, poolSize);
+      const candidateInputs: Array<{
+        slug: string;
+        title: string;
+        created?: string;
+        content: string;
+        lexicalScore: number;
+      }> = [];
+
+      for (const m of poolMatches) {
+        const originalSlug = shouldPrefix ? m.slug.split("/").slice(1).join("/") : m.slug;
+        const card = allCards.find(
+          (c) => c.slug === originalSlug || `${c.dirPrefix}/${c.slug}` === m.slug,
+        );
+        if (!card) continue;
+        const raw = await card.store.readCard(card.slug);
+        const { data, content } = parseFrontmatter(raw);
+        candidateInputs.push({
+          slug: m.slug,
+          title: String(data.title || card.slug),
+          created: toDateString(data.created),
+          content,
+          lexicalScore: m.score,
+        });
+      }
+
+      rerankData = await rerankWithSystemOne(provider, query, candidateInputs, {
+        maxKeep: limit,
+      });
+
+      const matchBySlug = new Map(poolMatches.map((m) => [m.slug, m]));
+      topCards = rerankData.selected
+        .map((s) => matchBySlug.get(s.slug))
+        .filter((m): m is ScoredMatch => Boolean(m));
+    } catch {
+      // Fallback to lexical topCards if decision provider fails
+    }
+  }
 
   const results: string[] = [];
   for (const matched of topCards) {
@@ -293,7 +362,12 @@ async function keywordSearch(
     );
   }
 
-  return { output: results.join(options.compact ? "\n" : "\n\n"), exitCode: 0, totalCount: scored.length };
+  return {
+    output: results.join(options.compact ? "\n" : "\n\n"),
+    exitCode: 0,
+    totalCount: scored.length,
+    rerank: rerankData,
+  };
 }
 
 // --- Semantic search ---

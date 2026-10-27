@@ -2,6 +2,7 @@ import { readFile, readdir, access } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import type { EmbeddingProviderType } from "./embeddings.js";
+import type { DecisionProviderType } from "./systemone.js";
 
 export interface MemexConfig {
   nestedSlugs: boolean;
@@ -25,10 +26,22 @@ export interface MemexConfig {
   localModelPath?: string;
   /** Extra directories (relative to MEMEX_HOME) whose .md files count as valid link targets in doctor. */
   extraLinkDirs?: string[];
+  /** Decision provider: "systemone". Optional user-configured System-1 decision API. */
+  decisionProvider?: DecisionProviderType;
+  /** Base URL for the System-1 decision endpoint (e.g., https://your-endpoint.example.com/v1). */
+  decisionBaseUrl?: string;
+  /** API key for the System-1 decision endpoint. Prefer env/key file for local secrets. */
+  decisionApiKey?: string;
+  /** Path to env/key file for the System-1 decision endpoint. */
+  decisionApiKeyPath?: string;
+  /** Decision model name (default: "microsoft-decision-1"). */
+  decisionModel?: string;
   /** Experimental feature flags. */
   experimental?: {
     /** Enable A-MEM-inspired agentic memory skill workflow. Default: false. */
     agenticMemory?: boolean;
+    /** Enable Jev-Mem-inspired System-1 decision controller for write/search/organize. Default: false. */
+    systemOneMemory?: boolean;
   };
 }
 
@@ -57,6 +70,11 @@ export async function readConfig(memexHome: string): Promise<MemexConfig> {
       ollamaBaseUrl: typeof parsed.ollamaBaseUrl === "string" ? parsed.ollamaBaseUrl : undefined,
       localModelPath: typeof parsed.localModelPath === "string" ? parsed.localModelPath : undefined,
       extraLinkDirs: Array.isArray(parsed.extraLinkDirs) ? parsed.extraLinkDirs : undefined,
+      decisionProvider: isValidDecisionProvider(parsed.decisionProvider) ? parsed.decisionProvider : undefined,
+      decisionBaseUrl: typeof parsed.decisionBaseUrl === "string" ? parsed.decisionBaseUrl : undefined,
+      decisionApiKey: typeof parsed.decisionApiKey === "string" ? parsed.decisionApiKey : undefined,
+      decisionApiKeyPath: typeof parsed.decisionApiKeyPath === "string" ? parsed.decisionApiKeyPath : undefined,
+      decisionModel: typeof parsed.decisionModel === "string" ? parsed.decisionModel : undefined,
       experimental: parseExperimental(parsed.experimental),
     };
   } catch {
@@ -71,16 +89,24 @@ function isValidProvider(value: unknown): value is EmbeddingProviderType {
   return value === "openai" || value === "azure" || value === "local" || value === "ollama";
 }
 
+function isValidDecisionProvider(value: unknown): value is DecisionProviderType {
+  return value === "systemone";
+}
+
 function parseExperimental(value: unknown): MemexConfig["experimental"] {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return undefined;
   }
   const obj = value as Record<string, unknown>;
   const agenticMemory = obj.agenticMemory === true ? true : undefined;
-  if (agenticMemory === undefined) {
+  const systemOneMemory = obj.systemOneMemory === true ? true : undefined;
+  if (agenticMemory === undefined && systemOneMemory === undefined) {
     return undefined;
   }
-  return { agenticMemory };
+  return {
+    ...(agenticMemory !== undefined ? { agenticMemory } : {}),
+    ...(systemOneMemory !== undefined ? { systemOneMemory } : {}),
+  };
 }
 
 /**

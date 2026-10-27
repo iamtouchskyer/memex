@@ -58,6 +58,7 @@ program
   .option("--nested", "Use nested (path-preserving) slugs for this command")
   .option("--all", "Search across all configured searchDirs in addition to cards/")
   .option("-s, --semantic", "Use embedding-based semantic search")
+  .option("-r, --rerank", "Rerank and filter results using configured System-1 decision model")
   .option("-c, --compact", "Compact output (one line per result)")
   .option("--list", "List all cards (when no query is given)")
   .option("--category <value>", "Filter by frontmatter category")
@@ -65,14 +66,14 @@ program
   .option("--author <value>", "Filter by frontmatter author/source")
   .option("--since <date>", "Only cards created/modified after this date (YYYY-MM-DD)")
   .option("--before <date>", "Only cards created/modified before this date (YYYY-MM-DD)")
-  .action(async (query: string | undefined, opts: { limit: string; nested?: boolean; all?: boolean; semantic?: boolean; compact?: boolean; list?: boolean; category?: string; tag?: string; author?: string; since?: string; before?: string }) => {
+  .action(async (query: string | undefined, opts: { limit: string; nested?: boolean; all?: boolean; semantic?: boolean; rerank?: boolean; compact?: boolean; list?: boolean; category?: string; tag?: string; author?: string; since?: string; before?: string }) => {
     const home = await resolveMemexHome();
     const config = await readConfig(home);
     const store = await getStore({ nested: opts.nested });
     const filter = (opts.category || opts.tag || opts.author || opts.since || opts.before)
       ? { category: opts.category, tag: opts.tag, author: opts.author, since: opts.since, before: opts.before }
       : undefined;
-    const result = await searchCommand(store, query, { limit: parseInt(opts.limit), all: opts.all, config, memexHome: home, semantic: opts.semantic, compact: opts.compact, list: opts.list, filter });
+    const result = await searchCommand(store, query, { limit: parseInt(opts.limit), all: opts.all, config, memexHome: home, semantic: opts.semantic, rerank: opts.rerank, compact: opts.compact, list: opts.list, filter });
     if (result.output) {
       const stream = result.exitCode === 0 ? process.stdout : process.stderr;
       stream.write(result.output + "\n");
@@ -98,10 +99,13 @@ program
 program
   .command("write <slug>")
   .description("Write a card (content via stdin)")
-  .action(async (slug: string) => {
+  .option("--decision", "Evaluate write action and link candidates using configured System-1 decision model")
+  .action(async (slug: string, opts: { decision?: boolean }) => {
+    const home = await resolveMemexHome();
+    const config = await readConfig(home);
     const store = await getStore();
     const input = await readStdin();
-    const result = await writeCommand(store, slug, input);
+    const result = await writeCommand(store, slug, input, { config, decision: opts.decision });
     if (!result.success) {
       process.stderr.write(result.error! + "\n");
       exit(1);
@@ -247,9 +251,12 @@ program
   .option("--since <date>", "Only check cards modified since this date (YYYY-MM-DD)")
   .option("--nested", "Use nested (path-preserving) slugs for this command")
   .option("--json", "Output results as JSON")
-  .action(async (opts: { since?: string; nested?: boolean; json?: boolean }) => {
+  .option("--decision", "Inspect recent pairs using configured System-1 decision model")
+  .action(async (opts: { since?: string; nested?: boolean; json?: boolean; decision?: boolean }) => {
+    const home = await resolveMemexHome();
+    const config = await readConfig(home);
     const store = await getStore({ nested: opts.nested });
-    const result = await organizeCommand(store, opts.since ?? null, opts.json);
+    const result = await organizeCommand(store, opts.since ?? null, opts.json, { config, decision: opts.decision });
     if (result.output) process.stdout.write(result.output + "\n");
     exit(result.exitCode);
   });

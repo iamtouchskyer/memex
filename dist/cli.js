@@ -3684,6 +3684,11 @@ async function readConfig(memexHome) {
       ollamaBaseUrl: typeof parsed.ollamaBaseUrl === "string" ? parsed.ollamaBaseUrl : void 0,
       localModelPath: typeof parsed.localModelPath === "string" ? parsed.localModelPath : void 0,
       extraLinkDirs: Array.isArray(parsed.extraLinkDirs) ? parsed.extraLinkDirs : void 0,
+      decisionProvider: isValidDecisionProvider(parsed.decisionProvider) ? parsed.decisionProvider : void 0,
+      decisionBaseUrl: typeof parsed.decisionBaseUrl === "string" ? parsed.decisionBaseUrl : void 0,
+      decisionApiKey: typeof parsed.decisionApiKey === "string" ? parsed.decisionApiKey : void 0,
+      decisionApiKeyPath: typeof parsed.decisionApiKeyPath === "string" ? parsed.decisionApiKeyPath : void 0,
+      decisionModel: typeof parsed.decisionModel === "string" ? parsed.decisionModel : void 0,
       experimental: parseExperimental(parsed.experimental)
     };
   } catch {
@@ -3695,16 +3700,23 @@ async function readConfig(memexHome) {
 function isValidProvider(value) {
   return value === "openai" || value === "azure" || value === "local" || value === "ollama";
 }
+function isValidDecisionProvider(value) {
+  return value === "systemone";
+}
 function parseExperimental(value) {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return void 0;
   }
   const obj = value;
   const agenticMemory = obj.agenticMemory === true ? true : void 0;
-  if (agenticMemory === void 0) {
+  const systemOneMemory = obj.systemOneMemory === true ? true : void 0;
+  if (agenticMemory === void 0 && systemOneMemory === void 0) {
     return void 0;
   }
-  return { agenticMemory };
+  return {
+    ...agenticMemory !== void 0 ? { agenticMemory } : {},
+    ...systemOneMemory !== void 0 ? { systemOneMemory } : {}
+  };
 }
 async function findMemexrcUp(startDir) {
   let dir = startDir;
@@ -7862,8 +7874,459 @@ var init_suggest_links = __esm({
   }
 });
 
+// src/lib/systemone.ts
+import { readFileSync } from "node:fs";
+import { request as httpsRequest } from "node:https";
+import { request as httpRequest } from "node:http";
+import { homedir as homedir2 } from "node:os";
+import { join as join3 } from "node:path";
+function resolveHomePath(path) {
+  if (path === "~") return homedir2();
+  if (path.startsWith("~/") || path.startsWith("~\\")) {
+    return join3(homedir2(), path.slice(2));
+  }
+  return path;
+}
+function parseKeyFromEnvFile(content) {
+  let apiKey;
+  let baseUrl;
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#") || !line.includes("=")) continue;
+    const idx = line.indexOf("=");
+    const key = line.slice(0, idx).trim();
+    const val = line.slice(idx + 1).trim().replace(/^["']|["']$/g, "");
+    if (!val) continue;
+    if (key === "MEMEX_DECISION_API_KEY" || key === "OPENAI_API_KEY" || key === "EDGE_PROXY_TOKEN" || key === "API_KEY") {
+      apiKey = apiKey ?? val;
+    } else if (key === "MEMEX_DECISION_BASE_URL" || key === "OPENAI_BASE_URL" || key === "BASE_URL") {
+      baseUrl = baseUrl ?? val;
+    }
+  }
+  if (!apiKey && !content.includes("=")) {
+    const raw = content.trim();
+    if (raw) apiKey = raw;
+  }
+  return { apiKey, baseUrl };
+}
+function readEnvOrKeyFile(path) {
+  try {
+    const content = readFileSync(resolveHomePath(path), "utf-8");
+    return parseKeyFromEnvFile(content);
+  } catch {
+    return {};
+  }
+}
+function normalizeSystemOnePath(basePath) {
+  const clean = basePath.replace(/\/$/, "");
+  if (!clean || clean === "/") return "/v1/systemone";
+  if (clean.endsWith("/systemone")) return clean;
+  if (clean.endsWith("/v1")) return `${clean}/systemone`;
+  return `${clean}/v1/systemone`;
+}
+function createDecisionProvider(options2 = {}) {
+  return new SystemOneDecisionProvider(options2);
+}
+async function evaluateWriteWithSystemOne(store, provider, slug, data, content, options2 = {}) {
+  const candidateLimit = options2.candidateLimit ?? 6;
+  const linkThreshold = options2.linkThreshold ?? 0.25;
+  const excerptChars = options2.excerptChars ?? 2400;
+  const query = [
+    String(data.title || slug),
+    typeof data.category === "string" ? data.category : "",
+    content.slice(0, 3e3)
+  ].filter(Boolean).join(" ");
+  const { tokens, originalTokens } = tokenizeQuery(query);
+  const alreadyLinked = new Set(extractLinks(content));
+  const allCards = await store.scanAll();
+  const scored = [];
+  for (const card of allCards) {
+    if (card.slug === slug || alreadyLinked.has(card.slug)) continue;
+    const raw = await store.readCard(card.slug);
+    const parsed = parseFrontmatter(raw);
+    const fields = buildSearchableFields(
+      card.slug,
+      parsed.data,
+      parsed.content,
+      extractLinks(parsed.content)
+    );
+    const match = tokens.length > 0 ? scoreCard(tokens, originalTokens, fields) : null;
+    const lexicalScore = match ? match.score : 0;
+    if (lexicalScore > 0 || allCards.length <= candidateLimit) {
+      scored.push({
+        slug: card.slug,
+        title: String(parsed.data.title || card.slug),
+        created: String(parsed.data.created || ""),
+        excerpt: parsed.content.trim().slice(0, excerptChars),
+        score: lexicalScore
+      });
+    }
+  }
+  scored.sort((a, b) => b.score !== a.score ? b.score - a.score : a.slug.localeCompare(b.slug));
+  const topCandidates = scored.slice(0, candidateLimit);
+  if (topCandidates.length === 0) {
+    return {
+      action: "create",
+      actionConfidence: 1,
+      actionProbabilities: { create: 1, update: 0, skip_duplicate: 0 },
+      candidates: [],
+      recommendedLinks: []
+    };
+  }
+  const state = {
+    new_card: {
+      slug,
+      title: String(data.title || slug),
+      created: String(data.created || ""),
+      content: content.trim().slice(0, excerptChars)
+    },
+    existing_candidates: topCandidates.map((c, idx) => ({
+      id: `c${idx}`,
+      slug: c.slug,
+      title: c.title,
+      created: c.created,
+      excerpt: c.excerpt
+    }))
+  };
+  const questions = {
+    write_action: {
+      type: "choice",
+      instructions: "Given new_card and existing_candidates, what memory action should be taken for new_card?",
+      criteria: {
+        create: "new_card introduces distinct new facts, events, or insights that should be stored as a separate card",
+        update: "new_card directly updates, revises, or supersedes the state of a specific existing candidate card on the exact same subject",
+        skip_duplicate: "new_card is redundant and repeats information already fully captured in an existing candidate card"
+      }
+    }
+  };
+  for (let i = 0; i < topCandidates.length; i++) {
+    const cid = `c${i}`;
+    questions[`${cid}_link`] = {
+      type: "noul",
+      instructions: `Should new_card add a [[wikilink]] to candidate ${cid} (${topCandidates[i].slug}) because they share the same specific entity, topic, task, or evolving state?`,
+      criteria: {
+        true: `Candidate ${cid} is directly relevant to new_card (e.g., updates its state, provides complementary evidence for the same question/topic, or shares a key entity).`,
+        false: `Candidate ${cid} is unrelated or only shares superficial/incidental words.`
+      }
+    };
+    questions[`${cid}_rel`] = {
+      type: "choice",
+      instructions: `Compare new_card against candidate ${cid} (${topCandidates[i].slug}). Does new_card update/change a specific mutable fact or number mentioned in candidate ${cid}, or are they complementary/unrelated?`,
+      criteria: {
+        state_update: "Both cards mention the same specific personal attribute, count, metric, habit frequency, location, or status, and new_card reports a newer/changed value or updated status over time (even if surrounded by other conversation)",
+        complementary: "Both cards relate to the same user topic or activity, but new_card only adds orthogonal details without changing or updating any prior count, metric, or status in this candidate",
+        contradicts: "new_card directly conflicts with this candidate without a temporal update",
+        duplicate: "new_card repeats the exact same facts without any new information",
+        unrelated: "new_card and this candidate are about different topics and only share incidental vocabulary"
+      }
+    };
+  }
+  const response = await provider.decide(state, questions);
+  const actionAns = response.answers.write_action;
+  const rawAction = actionAns?.choice ?? "create";
+  const candidateDecisions = [];
+  for (let i = 0; i < topCandidates.length; i++) {
+    const cid = `c${i}`;
+    const c = topCandidates[i];
+    const linkAns = response.answers[`${cid}_link`];
+    const relAns = response.answers[`${cid}_rel`];
+    const linkProb = linkAns?.noul ?? 0;
+    const relation = relAns?.choice ?? "unrelated";
+    const relationConf = relAns?.confidence ?? 0;
+    const shouldLink = linkProb >= linkThreshold && relation !== "unrelated";
+    candidateDecisions.push({
+      slug: c.slug,
+      title: c.title,
+      lexicalScore: c.score,
+      shouldLink,
+      linkProbability: linkProb,
+      relation,
+      relationConfidence: relationConf
+    });
+  }
+  candidateDecisions.sort((a, b) => b.linkProbability - a.linkProbability);
+  const recommendedLinks = candidateDecisions.filter((c) => c.shouldLink);
+  const updateTarget = candidateDecisions.find(
+    (c) => c.relation === "state_update" && c.shouldLink
+  );
+  let finalAction = rawAction;
+  if (updateTarget && finalAction === "create") {
+    finalAction = "update";
+  }
+  return {
+    action: finalAction,
+    actionConfidence: actionAns?.confidence ?? 0,
+    actionProbabilities: actionAns?.probabilities ?? {},
+    candidates: candidateDecisions,
+    recommendedLinks,
+    updateTargetSlug: updateTarget?.slug
+  };
+}
+async function rerankWithSystemOne(provider, query, candidates, options2 = {}) {
+  if (candidates.length === 0) {
+    return {
+      ranked: [],
+      selected: [],
+      sufficientEvidence: false,
+      sufficientProbability: 0
+    };
+  }
+  const excerptChars = options2.excerptChars ?? 2400;
+  const relevanceThreshold = options2.relevanceThreshold ?? 0.25;
+  const utilityThreshold = options2.utilityThreshold ?? 0.9;
+  const minKeep = options2.minKeep ?? 1;
+  const maxKeep = options2.maxKeep ?? 5;
+  const state = {
+    query,
+    candidates: candidates.map((c, idx) => ({
+      id: `m${idx}`,
+      slug: c.slug,
+      title: c.title,
+      date: c.created ?? "",
+      excerpt: c.content.trim().slice(0, excerptChars)
+    }))
+  };
+  const questions = {
+    sufficient: {
+      type: "noul",
+      instructions: "Do the provided candidate memories contain sufficient information to answer the query without expanding further search hops?",
+      criteria: {
+        true: "At least one or more candidates directly provide the facts needed to answer the query.",
+        false: "The candidates miss key facts needed to answer the query."
+      }
+    }
+  };
+  for (let i = 0; i < candidates.length; i++) {
+    const mid = `m${i}`;
+    questions[`${mid}_rel`] = {
+      type: "noul",
+      instructions: `Does candidate memory ${mid} (${candidates[i].slug}) contain evidence or context useful for answering the query?`,
+      criteria: {
+        true: `Candidate ${mid} contains facts, numbers, events, or preferences needed to answer the query.`,
+        false: `Candidate ${mid} is a distractor or about an unrelated topic.`
+      }
+    };
+    questions[`${mid}_util`] = {
+      type: "score",
+      instructions: `How useful is candidate memory ${mid} (${candidates[i].slug}) for answering the query?`,
+      criteria: [
+        "Irrelevant distractor",
+        "Tangential background only",
+        "Contains partial or supporting evidence",
+        "Contains direct key evidence to answer the query"
+      ]
+    };
+  }
+  const response = await provider.decide(state, questions);
+  const suffAns = response.answers.sufficient;
+  const suffProb = suffAns?.noul ?? 0;
+  const ranked = candidates.map((c, i) => {
+    const mid = `m${i}`;
+    const relAns = response.answers[`${mid}_rel`];
+    const utilAns = response.answers[`${mid}_util`];
+    const relProb = relAns?.noul ?? 0;
+    const utilScore = utilAns?.score ?? 0;
+    const combinedScore = 0.6 * relProb + 0.35 * (utilScore / 3) + 0.05 * c.lexicalScore;
+    const keep = relProb >= relevanceThreshold || utilScore >= utilityThreshold;
+    return {
+      slug: c.slug,
+      title: c.title,
+      lexicalScore: c.lexicalScore,
+      relevanceProbability: relProb,
+      utilityScore: utilScore,
+      combinedScore,
+      keep
+    };
+  });
+  ranked.sort((a, b) => b.combinedScore - a.combinedScore);
+  let selected = ranked.filter((r) => r.keep).slice(0, maxKeep);
+  if (selected.length < minKeep && ranked.length > 0) {
+    selected = ranked.slice(0, minKeep);
+  }
+  return {
+    ranked,
+    selected,
+    sufficientEvidence: suffProb >= 0.5,
+    sufficientProbability: suffProb
+  };
+}
+async function inspectPairsWithSystemOne(provider, pairs, options2 = {}) {
+  if (pairs.length === 0) return [];
+  const excerptChars = options2.excerptChars ?? 2400;
+  const state = {
+    card_pairs: pairs.map((p, idx) => ({
+      id: `p${idx}`,
+      card_a: {
+        slug: p.slug1,
+        title: p.title1,
+        date: p.created1 ?? "",
+        excerpt: p.content1.trim().slice(0, excerptChars)
+      },
+      card_b: {
+        slug: p.slug2,
+        title: p.title2,
+        date: p.created2 ?? "",
+        excerpt: p.content2.trim().slice(0, excerptChars)
+      }
+    }))
+  };
+  const questions = {};
+  for (let i = 0; i < pairs.length; i++) {
+    const pid = `p${i}`;
+    questions[`${pid}_verdict`] = {
+      type: "choice",
+      instructions: `Compare card_a and card_b in pair ${pid}. What is their relationship regarding memory consistency and evolution?`,
+      criteria: {
+        consistent: "The two cards cover complementary or distinct aspects without conflicting or superseding each other",
+        state_update: "One card updates, changes, or supersedes a mutable fact, metric, preference, or status in the other card over time",
+        contradictory: "The two cards make incompatible claims that conflict with each other",
+        redundant_merge: "The two cards repeat the same insight and should be merged"
+      }
+    };
+    questions[`${pid}_attn`] = {
+      type: "noul",
+      instructions: `Does pair ${pid} require memory consolidation (because one card updates, contradicts, or duplicates a fact in the other)?`,
+      criteria: {
+        true: "Yes, one card updates, supersedes, contradicts, or duplicates a specific fact in the other card.",
+        false: "No, they are simply consistent complementary notes that do not conflict or override each other."
+      }
+    };
+  }
+  const response = await provider.decide(state, questions);
+  return pairs.map((p, i) => {
+    const pid = `p${i}`;
+    const vAns = response.answers[`${pid}_verdict`];
+    const aAns = response.answers[`${pid}_attn`];
+    const verdict = vAns?.choice ?? "consistent";
+    const attnProb = aAns?.noul ?? 0;
+    const needsAttention = verdict !== "consistent" || attnProb >= 0.55;
+    return {
+      slug1: p.slug1,
+      slug2: p.slug2,
+      title1: p.title1,
+      title2: p.title2,
+      verdict,
+      confidence: vAns?.confidence ?? 0,
+      probabilities: vAns?.probabilities ?? {},
+      needsAttention,
+      attentionProbability: attnProb
+    };
+  });
+}
+var DEFAULT_DECISION_MODEL, SystemOneDecisionProvider;
+var init_systemone = __esm({
+  "src/lib/systemone.ts"() {
+    "use strict";
+    init_parser();
+    init_scoring();
+    DEFAULT_DECISION_MODEL = "microsoft-decision-1";
+    SystemOneDecisionProvider = class {
+      model;
+      apiKey;
+      baseHostname;
+      requestPath;
+      basePort;
+      useHttp;
+      extraHeaders;
+      timeoutMs;
+      constructor(options2 = {}) {
+        const keyFilePath = options2.apiKeyPath ?? process.env.MEMEX_DECISION_API_KEY_FILE;
+        const fromFile = keyFilePath ? readEnvOrKeyFile(keyFilePath) : {};
+        const apiKey = options2.apiKey ?? process.env.MEMEX_DECISION_API_KEY ?? fromFile.apiKey ?? process.env.OPENAI_API_KEY;
+        if (!apiKey) {
+          throw new Error(
+            "Decision API key required: set decisionApiKey in .memexrc, MEMEX_DECISION_API_KEY, or MEMEX_DECISION_API_KEY_FILE"
+          );
+        }
+        const baseUrl = options2.baseUrl ?? process.env.MEMEX_DECISION_BASE_URL ?? fromFile.baseUrl ?? process.env.OPENAI_BASE_URL;
+        if (!baseUrl) {
+          throw new Error(
+            "Decision base URL required: set decisionBaseUrl in .memexrc or MEMEX_DECISION_BASE_URL"
+          );
+        }
+        this.apiKey = apiKey;
+        this.model = options2.model ?? process.env.MEMEX_DECISION_MODEL ?? DEFAULT_DECISION_MODEL;
+        const parsed = new URL(baseUrl);
+        this.baseHostname = parsed.hostname;
+        this.requestPath = normalizeSystemOnePath(parsed.pathname);
+        this.basePort = parsed.port ? Number(parsed.port) : void 0;
+        this.useHttp = parsed.protocol === "http:";
+        this.extraHeaders = options2.extraHeaders ?? {};
+        this.timeoutMs = options2.timeoutMs ?? 3e4;
+      }
+      decide(state, questions) {
+        return new Promise((resolve3, reject2) => {
+          const body = JSON.stringify({
+            model: this.model,
+            state,
+            questions
+          });
+          const reqFn = this.useHttp ? httpRequest : httpsRequest;
+          const reqOptions = {
+            hostname: this.baseHostname,
+            path: this.requestPath,
+            method: "POST",
+            timeout: this.timeoutMs,
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${this.apiKey}`,
+              ...this.extraHeaders,
+              "Content-Length": Buffer.byteLength(body)
+            }
+          };
+          if (this.basePort) reqOptions.port = this.basePort;
+          const req = reqFn(reqOptions, (res) => {
+            let data = "";
+            res.on("data", (chunk) => {
+              data += chunk.toString();
+            });
+            res.on("end", () => {
+              if (res.statusCode && res.statusCode >= 400) {
+                reject2(
+                  new Error(
+                    `SystemOne API HTTP ${res.statusCode}: ${data.slice(0, 300)}`
+                  )
+                );
+                return;
+              }
+              try {
+                const parsed = JSON.parse(data);
+                if (parsed.error) {
+                  reject2(
+                    new Error(
+                      `SystemOne API error: ${parsed.error.message ?? JSON.stringify(parsed.error)}`
+                    )
+                  );
+                  return;
+                }
+                if (!parsed.answers || typeof parsed.answers !== "object") {
+                  reject2(
+                    new Error(
+                      "Unexpected SystemOne response: missing answers object"
+                    )
+                  );
+                  return;
+                }
+                resolve3(parsed);
+              } catch (e) {
+                reject2(new Error(`Failed to parse SystemOne response: ${e}`));
+              }
+            });
+          });
+          req.on("timeout", () => {
+            req.destroy(new Error(`SystemOne request timed out after ${this.timeoutMs}ms`));
+          });
+          req.on("error", reject2);
+          req.write(body);
+          req.end();
+        });
+      }
+    };
+  }
+});
+
 // src/commands/write.ts
-async function writeCommand(store, slug, input) {
+async function writeCommand(store, slug, input, options2 = {}) {
   const safety = prepareMemexInput(input, "content");
   if (!safety.ok) return { success: false, error: safety.error };
   const { data, content } = parseFrontmatter(safety.text);
@@ -7880,18 +8343,53 @@ async function writeCommand(store, slug, input) {
   const isNew = !await store.resolve(slug);
   await store.writeCard(slug, output);
   const warnings = [...safety.warnings ?? []];
+  let decisionResult;
+  const useDecision = options2.decision === true || options2.config?.experimental?.systemOneMemory === true || Boolean(options2._decisionProvider);
   if (isNew) {
-    try {
-      const suggestions = await suggestLinks(store, slug, data, content);
-      if (suggestions.length > 0) {
-        warnings.push(
-          `Link candidates (only add [[X]] if you can state the relationship): ${suggestions.map((s) => `[[${s}]]`).join(" ")}`
+    if (useDecision) {
+      try {
+        const provider = options2._decisionProvider ?? createDecisionProvider({
+          apiKey: options2.config?.decisionApiKey,
+          apiKeyPath: options2.config?.decisionApiKeyPath,
+          baseUrl: options2.config?.decisionBaseUrl,
+          model: options2.config?.decisionModel
+        });
+        decisionResult = await evaluateWriteWithSystemOne(
+          store,
+          provider,
+          slug,
+          data,
+          content
         );
+        if (decisionResult.action === "update" && decisionResult.updateTargetSlug) {
+          warnings.push(
+            `SystemOne decision: updates existing card [[${decisionResult.updateTargetSlug}]] (confidence: ${decisionResult.actionConfidence.toFixed(2)})`
+          );
+        } else if (decisionResult.action === "skip_duplicate") {
+          warnings.push(
+            `SystemOne decision: potential duplicate of existing card (confidence: ${decisionResult.actionConfidence.toFixed(2)})`
+          );
+        }
+        if (decisionResult.recommendedLinks.length > 0) {
+          const linkDesc = decisionResult.recommendedLinks.map((l) => `[[${l.slug}]] (${l.relation}, p=${l.linkProbability.toFixed(2)})`).join(" ");
+          warnings.push(`Link candidates (SystemOne verified): ${linkDesc}`);
+        }
+      } catch {
       }
-    } catch {
+    }
+    if (!decisionResult) {
+      try {
+        const suggestions = await suggestLinks(store, slug, data, content);
+        if (suggestions.length > 0) {
+          warnings.push(
+            `Link candidates (only add [[X]] if you can state the relationship): ${suggestions.map((s) => `[[${s}]]`).join(" ")}`
+          );
+        }
+      } catch {
+      }
     }
   }
-  return { success: true, warnings };
+  return { success: true, warnings, decision: decisionResult };
 }
 var REQUIRED_FIELDS;
 var init_write = __esm({
@@ -7900,6 +8398,7 @@ var init_write = __esm({
     init_parser();
     init_sensitive_input();
     init_suggest_links();
+    init_systemone();
     REQUIRED_FIELDS = ["title", "created", "source"];
   }
 });
@@ -7973,27 +8472,27 @@ var init_formatter = __esm({
 
 // src/lib/embeddings.ts
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync as readFileSync2 } from "node:fs";
 import { readFile as readFile3, writeFile as writeFile2, mkdir as mkdir2 } from "node:fs/promises";
-import { request as httpsRequest } from "node:https";
-import { request as httpRequest } from "node:http";
-import { join as join3, dirname as dirname3 } from "node:path";
-import { homedir as homedir2 } from "node:os";
+import { request as httpsRequest2 } from "node:https";
+import { request as httpRequest2 } from "node:http";
+import { join as join4, dirname as dirname3 } from "node:path";
+import { homedir as homedir3 } from "node:os";
 function embeddingsPath(basePath) {
   if (!basePath || basePath === "/") return "/v1/embeddings";
   if (basePath.endsWith("/v1")) return `${basePath}/embeddings`;
   return `${basePath}/v1/embeddings`;
 }
-function resolveHomePath(path) {
-  if (path === "~") return homedir2();
+function resolveHomePath2(path) {
+  if (path === "~") return homedir3();
   if (path.startsWith("~/") || path.startsWith("~\\")) {
-    return join3(homedir2(), path.slice(2));
+    return join4(homedir3(), path.slice(2));
   }
   return path;
 }
 function readKeyFile(path) {
   try {
-    const key = readFileSync(resolveHomePath(path), "utf-8").trim();
+    const key = readFileSync2(resolveHomePath2(path), "utf-8").trim();
     return key || void 0;
   } catch {
     return void 0;
@@ -8016,7 +8515,7 @@ function resolveAzureApiKey(apiKey, apiKeyPath) {
   if (apiKey) return apiKey;
   if (apiKeyPath) return readKeyFile(apiKeyPath);
   return process.env.AZURE_OPENAI_API_KEY ?? process.env.MEMEX_AZURE_OPENAI_API_KEY ?? readKeyFile(
-    process.env.AZURE_OPENAI_API_KEY_FILE ?? process.env.MEMEX_AZURE_OPENAI_API_KEY_FILE ?? join3(homedir2(), ".azure_api_key")
+    process.env.AZURE_OPENAI_API_KEY_FILE ?? process.env.MEMEX_AZURE_OPENAI_API_KEY_FILE ?? join4(homedir3(), ".azure_api_key")
   );
 }
 function resolveAzureEndpoint(endpoint) {
@@ -8249,7 +8748,7 @@ var init_embeddings = __esm({
             model: this.model,
             input: texts
           });
-          const reqFn = this.useHttp ? httpRequest : httpsRequest;
+          const reqFn = this.useHttp ? httpRequest2 : httpsRequest2;
           const reqOptions = {
             hostname: this.baseHostname,
             path: this.requestPath,
@@ -8389,7 +8888,7 @@ var init_embeddings = __esm({
         });
         const url2 = new URL("/api/embed", this.baseUrl);
         const isHttps = url2.protocol === "https:";
-        const requestFn = isHttps ? httpsRequest : httpRequest;
+        const requestFn = isHttps ? httpsRequest2 : httpRequest2;
         return new Promise((resolve3, reject2) => {
           const req = requestFn(
             {
@@ -8449,7 +8948,7 @@ var init_embeddings = __esm({
       constructor(memexHome, cacheModel) {
         this.memexHome = memexHome;
         this.cacheModel = cacheModel;
-        this.filePath = join3(
+        this.filePath = join4(
           memexHome,
           ".memex",
           "embeddings",
@@ -8501,7 +9000,7 @@ var init_embeddings = __esm({
 });
 
 // src/commands/search.ts
-import { join as join4 } from "node:path";
+import { join as join5 } from "node:path";
 async function searchCommand(store, query, options2 = {}) {
   const safety = query ? prepareMemexInput(query, "query") : { ok: true, text: query ?? "", warnings: [] };
   if (!safety.ok) return { output: safety.error ?? "Sensitive input rejected.", exitCode: 1 };
@@ -8510,9 +9009,9 @@ async function searchCommand(store, query, options2 = {}) {
     { store, dirPrefix: "cards" }
   ];
   if (options2.all && options2.config?.searchDirs && options2.config.searchDirs.length > 0 && options2.memexHome) {
-    const archiveDir = join4(options2.memexHome, "archive");
+    const archiveDir = join5(options2.memexHome, "archive");
     for (const searchDir of options2.config.searchDirs) {
-      const fullPath = join4(options2.memexHome, searchDir);
+      const fullPath = join5(options2.memexHome, searchDir);
       const additionalStore = new CardStore(fullPath, archiveDir, store["nestedSlugs"]);
       const dirName = searchDir.split("/").pop() || searchDir;
       storesToSearch.push({ store: additionalStore, dirPrefix: dirName });
@@ -8653,7 +9152,44 @@ async function keywordSearch(query, allCards, shouldPrefix, options2) {
   }
   if (scored.length === 0) return { output: "", exitCode: 0 };
   sortScoredMatches(scored);
-  const topCards = scored.slice(0, limit);
+  const useRerank = options2.rerank === true || options2.config?.experimental?.systemOneMemory === true || Boolean(options2._decisionProvider);
+  let topCards = scored.slice(0, limit);
+  let rerankData;
+  if (useRerank && limit > 0) {
+    try {
+      const provider = options2._decisionProvider ?? createDecisionProvider({
+        apiKey: options2.config?.decisionApiKey,
+        apiKeyPath: options2.config?.decisionApiKeyPath,
+        baseUrl: options2.config?.decisionBaseUrl,
+        model: options2.config?.decisionModel
+      });
+      const poolSize = Math.min(scored.length, Math.max(limit * 3, 18));
+      const poolMatches = scored.slice(0, poolSize);
+      const candidateInputs = [];
+      for (const m of poolMatches) {
+        const originalSlug = shouldPrefix ? m.slug.split("/").slice(1).join("/") : m.slug;
+        const card = allCards.find(
+          (c) => c.slug === originalSlug || `${c.dirPrefix}/${c.slug}` === m.slug
+        );
+        if (!card) continue;
+        const raw = await card.store.readCard(card.slug);
+        const { data, content } = parseFrontmatter(raw);
+        candidateInputs.push({
+          slug: m.slug,
+          title: String(data.title || card.slug),
+          created: toDateString(data.created),
+          content,
+          lexicalScore: m.score
+        });
+      }
+      rerankData = await rerankWithSystemOne(provider, query, candidateInputs, {
+        maxKeep: limit
+      });
+      const matchBySlug = new Map(poolMatches.map((m) => [m.slug, m]));
+      topCards = rerankData.selected.map((s) => matchBySlug.get(s.slug)).filter((m) => Boolean(m));
+    } catch {
+    }
+  }
   const results = [];
   for (const matched of topCards) {
     const originalSlug = shouldPrefix ? matched.slug.split("/").slice(1).join("/") : matched.slug;
@@ -8678,7 +9214,12 @@ async function keywordSearch(query, allCards, shouldPrefix, options2) {
       options2.compact ? formatCompactSearchResult(item) : formatSearchResult(item)
     );
   }
-  return { output: results.join(options2.compact ? "\n" : "\n\n"), exitCode: 0, totalCount: scored.length };
+  return {
+    output: results.join(options2.compact ? "\n" : "\n\n"),
+    exitCode: 0,
+    totalCount: scored.length,
+    rerank: rerankData
+  };
 }
 async function semanticSearch(query, allCards, shouldPrefix, options2) {
   const rawLimit = options2.limit ?? DEFAULT_LIMIT;
@@ -8784,6 +9325,7 @@ var init_search = __esm({
     init_formatter();
     init_embeddings();
     init_scoring();
+    init_systemone();
     init_sensitive_input();
     DEFAULT_LIMIT = 10;
   }
@@ -8791,7 +9333,7 @@ var init_search = __esm({
 
 // src/lib/scan.ts
 import { readdir as readdir3 } from "node:fs/promises";
-import { join as join5, basename as basename2 } from "node:path";
+import { join as join6, basename as basename2 } from "node:path";
 async function scanMarkdownFiles(dir) {
   const results = [];
   async function walk(d) {
@@ -8802,7 +9344,7 @@ async function scanMarkdownFiles(dir) {
       return;
     }
     for (const entry of entries) {
-      const fullPath = join5(d, entry.name);
+      const fullPath = join6(d, entry.name);
       if (entry.isDirectory()) {
         await walk(fullPath);
       } else if (entry.isFile() && entry.name.endsWith(".md")) {
@@ -8820,7 +9362,7 @@ var init_scan = __esm({
 });
 
 // src/commands/links.ts
-import { join as join6, resolve as resolve2 } from "node:path";
+import { join as join7, resolve as resolve2 } from "node:path";
 import { readFile as readFile4 } from "node:fs/promises";
 async function linksCommand(store, slug, opts) {
   const cards = await store.scanAll();
@@ -8845,7 +9387,7 @@ async function linksCommand(store, slug, opts) {
   }
   if (opts?.home && opts?.extraLinkDirs && opts.extraLinkDirs.length > 0) {
     for (const dirName of opts.extraLinkDirs) {
-      const extraDir = resolve2(join6(opts.home, dirName));
+      const extraDir = resolve2(join7(opts.home, dirName));
       if (extraDir === resolve2(store.cardsDir)) continue;
       const extraFiles = await scanMarkdownFiles(extraDir);
       for (const file2 of extraFiles) {
@@ -8940,7 +9482,7 @@ var init_links = __esm({
 
 // src/lib/sync.ts
 import { readFile as readFile5, writeFile as writeFile3, mkdir as mkdir3, rename as rename2 } from "node:fs/promises";
-import { join as join7, dirname as dirname4 } from "node:path";
+import { join as join8, dirname as dirname4 } from "node:path";
 import { execFile as execFileCb } from "node:child_process";
 import { promisify } from "node:util";
 import { randomBytes } from "node:crypto";
@@ -8949,7 +9491,7 @@ async function execGitFile(args) {
 }
 async function readSyncConfig(home) {
   try {
-    const raw = await readFile5(join7(home, CONFIG_FILE), "utf-8");
+    const raw = await readFile5(join8(home, CONFIG_FILE), "utf-8");
     return JSON.parse(raw);
   } catch {
     return { adapter: "git", auto: false };
@@ -8957,7 +9499,7 @@ async function readSyncConfig(home) {
 }
 async function writeSyncConfig(home, config2) {
   await mkdir3(home, { recursive: true });
-  const target = join7(home, CONFIG_FILE);
+  const target = join8(home, CONFIG_FILE);
   const tmp = target + "." + randomBytes(4).toString("hex") + ".tmp";
   await writeFile3(tmp, JSON.stringify(config2, null, 2), "utf-8");
   await rename2(tmp, target);
@@ -9131,14 +9673,14 @@ var init_sync = __esm({
             throw new Error("Failed to get repo URL from gh CLI.");
           }
         }
-        await mkdir3(join7(this.home, "cards"), { recursive: true });
+        await mkdir3(join8(this.home, "cards"), { recursive: true });
         try {
           await execGitFile(["-C", this.home, "rev-parse", "--git-dir"]);
         } catch {
           await execGitFile(["init", this.home]);
         }
         await execGitFile(["-C", this.home, "config", "core.autocrlf", "false"]);
-        const gitignorePath = join7(this.home, ".gitignore");
+        const gitignorePath = join8(this.home, ".gitignore");
         const ignoreEntries = [".sync.json", ".last-organize"];
         try {
           const existing = await readFile5(gitignorePath, "utf-8");
@@ -9372,7 +9914,7 @@ Then resolve conflicts and run \`memex sync --init\` again.`
               `:3:${relPath}`
             ]);
             const conflictName = relPath.replace(/\.md$/, `-conflict-${timestamp}.md`);
-            const conflictPath = join7(this.home, conflictName);
+            const conflictPath = join8(this.home, conflictName);
             await mkdir3(dirname4(conflictPath), { recursive: true });
             await writeFile3(conflictPath, theirsContent, "utf-8");
             conflictCopies.push(conflictName);
@@ -9490,7 +10032,7 @@ function daysSince(dateStr, now) {
   if (isNaN(d.getTime())) return Infinity;
   return (now.getTime() - d.getTime()) / (1e3 * 60 * 60 * 24);
 }
-async function organizeCommand(store, lastOrganize, json2) {
+async function organizeCommand(store, lastOrganize, json2, options2 = {}) {
   const cards = await store.scanAll();
   if (cards.length === 0) return { output: "No cards yet.", exitCode: 0 };
   const outboundMap = /* @__PURE__ */ new Map();
@@ -9604,6 +10146,31 @@ ${orphansGrace.length} recently written card(s) not yet cited \u2014 no action n
     }
   }
   const cappedPairs = recentPairs.slice(0, 20);
+  let pairDecisions;
+  const useDecision = options2.decision === true || options2.config?.experimental?.systemOneMemory === true || Boolean(options2._decisionProvider);
+  if (useDecision && cappedPairs.length > 0) {
+    try {
+      const provider = options2._decisionProvider ?? createDecisionProvider({
+        apiKey: options2.config?.decisionApiKey,
+        apiKeyPath: options2.config?.decisionApiKeyPath,
+        baseUrl: options2.config?.decisionBaseUrl,
+        model: options2.config?.decisionModel
+      });
+      const pairInputs = cappedPairs.map((p) => {
+        const info1 = cardData.get(p.slug1);
+        const info2 = cardData.get(p.slug2);
+        return {
+          ...p,
+          created1: info1.created,
+          created2: info2.created,
+          content1: info1.content,
+          content2: info2.content
+        };
+      });
+      pairDecisions = await inspectPairsWithSystemOne(provider, pairInputs);
+    } catch {
+    }
+  }
   if (json2) {
     const jsonOutput = {
       stats,
@@ -9611,15 +10178,18 @@ ${orphansGrace.length} recently written card(s) not yet cited \u2014 no action n
       orphansGrace: orphansGrace.map((o) => ({ slug: o.slug, title: cardData.get(o.slug)?.title ?? o.slug })),
       hubs: hubs.map((h) => ({ slug: h.slug, title: cardData.get(h.slug)?.title ?? h.slug, inbound: h.inbound })),
       conflicts: conflicts.map((slug) => ({ slug, title: cardData.get(slug)?.title ?? slug })),
-      recentPairs: cappedPairs
+      recentPairs: cappedPairs,
+      ...pairDecisions ? { pairDecisions } : {}
     };
-    return { output: JSON.stringify(jsonOutput, null, 2), exitCode: 0 };
+    return { output: JSON.stringify(jsonOutput, null, 2), exitCode: 0, pairDecisions };
   }
   if (cappedPairs.length > 0) {
-    const pairSections = cappedPairs.map((p) => {
+    const pairSections = cappedPairs.map((p, idx) => {
       const info1 = cardData.get(p.slug1);
       const info2 = cardData.get(p.slug2);
-      return `### ${p.slug1} \u2194 ${p.slug2}
+      const dec = pairDecisions?.[idx];
+      const badge = dec ? ` [${dec.verdict}, attn=${dec.attentionProbability.toFixed(2)}]` : "";
+      return `### ${p.slug1} \u2194 ${p.slug2}${badge}
 **${p.slug1}** (${p.title1}):
 ${info1.content.slice(0, 300)}
 
@@ -9632,7 +10202,7 @@ ${info2.content.slice(0, 300)}`;
 ... and ${recentPairs.length - 20} more pairs not shown. Run with a recent \`since\` date for targeted checks.` : "")
     );
   }
-  return { output: sections.join("\n\n"), exitCode: 0 };
+  return { output: sections.join("\n\n"), exitCode: 0, pairDecisions };
 }
 var HUB_OUTBOUND, FRESH_DAYS;
 var init_organize = __esm({
@@ -9640,6 +10210,7 @@ var init_organize = __esm({
     "use strict";
     init_parser();
     init_formatter();
+    init_systemone();
     HUB_OUTBOUND = 5;
     FRESH_DAYS = 7;
   }
@@ -9647,7 +10218,7 @@ var init_organize = __esm({
 
 // src/commands/flomo.ts
 import { readFile as readFile9, writeFile as writeFile5 } from "node:fs/promises";
-import { join as join14, dirname as dirname7 } from "node:path";
+import { join as join15, dirname as dirname7 } from "node:path";
 function isValidFlomoWebhookUrl(url2) {
   try {
     const parsed = new URL(url2);
@@ -9657,7 +10228,7 @@ function isValidFlomoWebhookUrl(url2) {
   }
 }
 async function readFlomoConfig(memexHome) {
-  const configPath = join14(memexHome, ".memexrc");
+  const configPath = join15(memexHome, ".memexrc");
   try {
     const content = await readFile9(configPath, "utf-8");
     const parsed = JSON.parse(content);
@@ -9672,7 +10243,7 @@ async function writeFlomoConfig(memexHome, webhookUrl) {
   if (!isValidFlomoWebhookUrl(webhookUrl)) {
     return { success: false, error: "Invalid flomo webhook URL. Must be https://flomoapp.com/iwh/..." };
   }
-  const configPath = join14(memexHome, ".memexrc");
+  const configPath = join15(memexHome, ".memexrc");
   let existing = {};
   try {
     const content = await readFile9(configPath, "utf-8");
@@ -41029,7 +41600,8 @@ function registerOperations(server, store, hooks, home, getClientName) {
     await hooks.run("pre", "recall");
     const filter = category || tag || author || since || before ? { category, tag, author, since, before } : void 0;
     if (query) {
-      const result = await searchCommand(store, query, { limit: 10, filter });
+      const config2 = await readConfig(home);
+      const result = await searchCommand(store, query, { limit: 10, filter, config: config2, memexHome: home });
       return textResult(result.output || "No cards found.", result.exitCode !== 0);
     }
     if (!filter) {
@@ -41064,7 +41636,8 @@ function registerOperations(server, store, hooks, home, getClientName) {
     };
     if (category) data.category = category;
     const content = stringifyFrontmatter(body, data);
-    const result = await writeCommand(store, slug, content);
+    const userConfig = await readConfig(home);
+    const result = await writeCommand(store, slug, content, { config: userConfig });
     if (!result.success) {
       return textResult(result.error, true);
     }
@@ -41099,7 +41672,8 @@ ${formatWarnings(result.warnings)}` : "";
     })
   }, async ({ since }) => {
     await hooks.run("pre", "organize");
-    const result = await organizeCommand(store, since ?? null);
+    const userConfig = await readConfig(home);
+    const result = await organizeCommand(store, since ?? null, false, { config: userConfig });
     await hooks.run("post", "organize");
     return { content: [{ type: "text", text: result.output || "No cards found." }] };
   });
@@ -41234,6 +41808,7 @@ var init_operations = __esm({
     init_organize();
     init_parser();
     init_sync();
+    init_config();
     init_flomo();
     init_sensitive_input();
     init_zod();
@@ -41245,15 +41820,15 @@ var server_exports = {};
 __export(server_exports, {
   createMemexServer: () => createMemexServer
 });
-import { existsSync as existsSync2, readFileSync as readFileSync2 } from "node:fs";
-import { join as join15, dirname as dirname8 } from "node:path";
+import { existsSync as existsSync2, readFileSync as readFileSync3 } from "node:fs";
+import { join as join16, dirname as dirname8 } from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 function readPackageJson(startDir) {
   let dir = startDir;
   for (let depth = 0; depth < 6; depth++) {
-    const path = join15(dir, "package.json");
+    const path = join16(dir, "package.json");
     if (existsSync2(path)) {
-      const pkg3 = JSON.parse(readFileSync2(path, "utf-8"));
+      const pkg3 = JSON.parse(readFileSync3(path, "utf-8"));
       if (pkg3.name === "@touchskyer/memex") return pkg3;
     }
     const parent = dirname8(dir);
@@ -41521,8 +42096,8 @@ __export(mcp_config_exports, {
   configureMcp: () => configureMcp
 });
 import { readFile as readFile10, writeFile as writeFile6, mkdir as mkdir4 } from "node:fs/promises";
-import { join as join16, dirname as dirname9 } from "node:path";
-import { homedir as homedir4 } from "node:os";
+import { join as join17, dirname as dirname9 } from "node:path";
+import { homedir as homedir5 } from "node:os";
 async function configureMcp(opts) {
   const mcpServers = { memex: MCP_ENTRY };
   if (opts.claudeCode) {
@@ -41538,7 +42113,7 @@ async function configureMcp(opts) {
   };
 }
 async function writeClaudeCodeConfig(mcpServers) {
-  const settingsPath = join16(homedir4(), ".claude", "settings.json");
+  const settingsPath = join17(homedir5(), ".claude", "settings.json");
   let settings = {};
   try {
     const raw = await readFile10(settingsPath, "utf-8");
@@ -41599,8 +42174,8 @@ init_read();
 init_search();
 init_links();
 init_archive();
-import { join as join17, dirname as dirname10 } from "node:path";
-import { readFileSync as readFileSync3 } from "node:fs";
+import { join as join18, dirname as dirname10 } from "node:path";
+import { readFileSync as readFileSync4 } from "node:fs";
 import { fileURLToPath as fileURLToPath3 } from "node:url";
 
 // src/commands/serve.ts
@@ -41609,7 +42184,7 @@ init_parser();
 init_sync();
 init_config();
 import { createServer } from "node:http";
-import { join as join8 } from "node:path";
+import { join as join9 } from "node:path";
 import { readFile as readFile6, access as access2 } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname as dirname6 } from "node:path";
@@ -41638,13 +42213,13 @@ async function resolveAsset(name, ...candidates) {
 }
 var SERVE_UI_HTML = resolveAsset(
   "serve-ui.html",
-  join8(__dirname, "serve-ui.html"),
-  join8(__dirname, "commands", "serve-ui.html")
+  join9(__dirname, "serve-ui.html"),
+  join9(__dirname, "commands", "serve-ui.html")
 );
 var SHARE_CARD_JS = resolveAsset(
   "share-card.js",
-  join8(__dirname, "..", "share-card", "share-card.js"),
-  join8(__dirname, "share-card", "share-card.js")
+  join9(__dirname, "..", "share-card", "share-card.js"),
+  join9(__dirname, "share-card", "share-card.js")
 );
 var MEMRA_URL = "https://memra.vercel.app";
 var cachedHTML = null;
@@ -41689,7 +42264,7 @@ async function serveCommand(port, opts = {}) {
     return null;
   }
   const showBanner = !syncConfig.remote;
-  const store = new CardStore(join8(home, "cards"), join8(home, "archive"));
+  const store = new CardStore(join9(home, "cards"), join9(home, "archive"));
   const server = createServer(async (req, res) => {
     try {
       const url2 = new URL(req.url || "/", `http://localhost:${port}`);
@@ -41953,13 +42528,13 @@ Run: memex sync --init`;
 }
 
 // src/commands/import.ts
-import { join as join10 } from "node:path";
-import { homedir as homedir3 } from "node:os";
+import { join as join11 } from "node:path";
+import { homedir as homedir4 } from "node:os";
 import { existsSync } from "node:fs";
 
 // src/importers/openclaw.ts
 import { readdir as readdir4, readFile as readFile7 } from "node:fs/promises";
-import { join as join9, basename as basename3 } from "node:path";
+import { join as join10, basename as basename3 } from "node:path";
 function slugify(text) {
   return text.toLowerCase().replace(/[^\w\u4e00-\u9fff\s-]/g, "").replace(/\s+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "").slice(0, 80);
 }
@@ -42019,14 +42594,14 @@ function generateSlugs(sections, date5, fallbackName) {
 var OpenClawImporter = class {
   name = "openclaw";
   description = "Import daily memory files from OpenClaw (~/.openclaw/workspace/memory/)";
-  defaultSourceDir = join9(".openclaw", "workspace", "memory");
+  defaultSourceDir = join10(".openclaw", "workspace", "memory");
   async run(opts) {
     const { store, sourceDir, dryRun = false, onLog = console.log } = opts;
     const files = (await readdir4(sourceDir)).filter((f) => f.endsWith(".md")).sort();
     let created = 0;
     let skipped = 0;
     for (const file2 of files) {
-      const content = await readFile7(join9(sourceDir, file2), "utf-8");
+      const content = await readFile7(join10(sourceDir, file2), "utf-8");
       const date5 = extractDateFromFilename(file2);
       const sections = extractH2Sections(content);
       if (sections.length === 0) {
@@ -42090,7 +42665,7 @@ Usage: memex import <source> [--dry-run] [--dir <path>]`
       error: `Unknown importer: "${source}". Available: ${names}`
     };
   }
-  const sourceDir = opts.dir || join10(homedir3(), importer.defaultSourceDir);
+  const sourceDir = opts.dir || join11(homedir4(), importer.defaultSourceDir);
   if (!existsSync(sourceDir)) {
     return {
       success: false,
@@ -42116,7 +42691,7 @@ Usage: memex import <source> [--dry-run] [--dir <path>]`
 init_store();
 init_parser();
 init_scan();
-import { join as join11 } from "node:path";
+import { join as join12 } from "node:path";
 async function checkCollisions(cardsDir, archiveDir) {
   try {
     const basenameStore = new CardStore(cardsDir, archiveDir, false);
@@ -42211,7 +42786,7 @@ async function checkOrphans(cardsDir, archiveDir, verbose) {
 async function scanExtraSlugs(home, extraDirs) {
   const slugs = /* @__PURE__ */ new Set();
   for (const dirName of extraDirs) {
-    const files = await scanMarkdownFiles(join11(home, dirName));
+    const files = await scanMarkdownFiles(join12(home, dirName));
     for (const file2 of files) {
       slugs.add(file2.slug);
     }
@@ -42351,7 +42926,7 @@ async function doctorCommand(cardsDir, archiveDir, json2) {
 
 // src/commands/migrate.ts
 import { readFile as readFile8, writeFile as writeFile4 } from "node:fs/promises";
-import { join as join12 } from "node:path";
+import { join as join13 } from "node:path";
 async function migrateCommand(memexHome, cardsDir, archiveDir) {
   try {
     const doctorResult = await doctorCommand(cardsDir, archiveDir);
@@ -42363,7 +42938,7 @@ async function migrateCommand(memexHome, cardsDir, archiveDir) {
 Resolve collisions before enabling nestedSlugs.`
       };
     }
-    const configPath = join12(memexHome, ".memexrc");
+    const configPath = join13(memexHome, ".memexrc");
     let config2 = {};
     try {
       const content = await readFile8(configPath, "utf-8");
@@ -42388,15 +42963,15 @@ ${doctorResult.output}`
 // src/commands/backlinks.ts
 init_store();
 init_parser();
-import { join as join13 } from "node:path";
+import { join as join14 } from "node:path";
 async function backlinksCommand(store, slug, options2 = {}) {
   const storesToSearch = [
     { store, dirPrefix: "cards" }
   ];
   if (options2.all && options2.config?.searchDirs && options2.config.searchDirs.length > 0 && options2.memexHome) {
-    const archiveDir = join13(options2.memexHome, "archive");
+    const archiveDir = join14(options2.memexHome, "archive");
     for (const searchDir of options2.config.searchDirs) {
-      const fullPath = join13(options2.memexHome, searchDir);
+      const fullPath = join14(options2.memexHome, searchDir);
       const additionalStore = new CardStore(fullPath, archiveDir, store["nestedSlugs"]);
       const dirName = searchDir.split("/").pop() || searchDir;
       storesToSearch.push({ store: additionalStore, dirPrefix: dirName });
@@ -42461,13 +43036,13 @@ ${relationship} [[${toSlug}]]
 init_organize();
 init_flomo();
 var __dirname3 = dirname10(fileURLToPath3(import.meta.url));
-var pkg2 = JSON.parse(readFileSync3(join17(__dirname3, "..", "package.json"), "utf-8"));
+var pkg2 = JSON.parse(readFileSync4(join18(__dirname3, "..", "package.json"), "utf-8"));
 async function getStore(opts) {
   const home = await resolveMemexHome();
   await warnIfEmptyCards(home);
   const config2 = await readConfig(home);
   const nestedSlugs = opts?.nested ?? config2.nestedSlugs;
-  return new CardStore(join17(home, "cards"), join17(home, "archive"), nestedSlugs);
+  return new CardStore(join18(home, "cards"), join18(home, "archive"), nestedSlugs);
 }
 function exit(code) {
   if (process.stdout.writableLength === 0) {
@@ -42485,12 +43060,12 @@ async function readStdin() {
 }
 var program2 = new Command();
 program2.name("memex").description("Zettelkasten agent memory CLI").version(pkg2.version);
-program2.command("search [query]").description("Search cards by keyword (ranked OR), or show guidance if no query").option("-l, --limit <n>", "Max results to return", "10").option("--nested", "Use nested (path-preserving) slugs for this command").option("--all", "Search across all configured searchDirs in addition to cards/").option("-s, --semantic", "Use embedding-based semantic search").option("-c, --compact", "Compact output (one line per result)").option("--list", "List all cards (when no query is given)").option("--category <value>", "Filter by frontmatter category").option("--tag <value>", "Filter by frontmatter tag").option("--author <value>", "Filter by frontmatter author/source").option("--since <date>", "Only cards created/modified after this date (YYYY-MM-DD)").option("--before <date>", "Only cards created/modified before this date (YYYY-MM-DD)").action(async (query, opts) => {
+program2.command("search [query]").description("Search cards by keyword (ranked OR), or show guidance if no query").option("-l, --limit <n>", "Max results to return", "10").option("--nested", "Use nested (path-preserving) slugs for this command").option("--all", "Search across all configured searchDirs in addition to cards/").option("-s, --semantic", "Use embedding-based semantic search").option("-r, --rerank", "Rerank and filter results using configured System-1 decision model").option("-c, --compact", "Compact output (one line per result)").option("--list", "List all cards (when no query is given)").option("--category <value>", "Filter by frontmatter category").option("--tag <value>", "Filter by frontmatter tag").option("--author <value>", "Filter by frontmatter author/source").option("--since <date>", "Only cards created/modified after this date (YYYY-MM-DD)").option("--before <date>", "Only cards created/modified before this date (YYYY-MM-DD)").action(async (query, opts) => {
   const home = await resolveMemexHome();
   const config2 = await readConfig(home);
   const store = await getStore({ nested: opts.nested });
   const filter = opts.category || opts.tag || opts.author || opts.since || opts.before ? { category: opts.category, tag: opts.tag, author: opts.author, since: opts.since, before: opts.before } : void 0;
-  const result = await searchCommand(store, query, { limit: parseInt(opts.limit), all: opts.all, config: config2, memexHome: home, semantic: opts.semantic, compact: opts.compact, list: opts.list, filter });
+  const result = await searchCommand(store, query, { limit: parseInt(opts.limit), all: opts.all, config: config2, memexHome: home, semantic: opts.semantic, rerank: opts.rerank, compact: opts.compact, list: opts.list, filter });
   if (result.output) {
     const stream = result.exitCode === 0 ? process.stdout : process.stderr;
     stream.write(result.output + "\n");
@@ -42507,10 +43082,12 @@ program2.command("read <slug>").description("Read a card's full content").option
     exit(1);
   }
 });
-program2.command("write <slug>").description("Write a card (content via stdin)").action(async (slug) => {
+program2.command("write <slug>").description("Write a card (content via stdin)").option("--decision", "Evaluate write action and link candidates using configured System-1 decision model").action(async (slug, opts) => {
+  const home = await resolveMemexHome();
+  const config2 = await readConfig(home);
   const store = await getStore();
   const input = await readStdin();
-  const result = await writeCommand(store, slug, input);
+  const result = await writeCommand(store, slug, input, { config: config2, decision: opts.decision });
   if (!result.success) {
     process.stderr.write(result.error + "\n");
     exit(1);
@@ -42605,9 +43182,11 @@ program2.command("sync").description("Sync cards across devices via git").option
     }
   }
 );
-program2.command("organize").description("Analyze card network: orphans, hubs, conflicts, and contradiction pairs").option("--since <date>", "Only check cards modified since this date (YYYY-MM-DD)").option("--nested", "Use nested (path-preserving) slugs for this command").option("--json", "Output results as JSON").action(async (opts) => {
+program2.command("organize").description("Analyze card network: orphans, hubs, conflicts, and contradiction pairs").option("--since <date>", "Only check cards modified since this date (YYYY-MM-DD)").option("--nested", "Use nested (path-preserving) slugs for this command").option("--json", "Output results as JSON").option("--decision", "Inspect recent pairs using configured System-1 decision model").action(async (opts) => {
+  const home = await resolveMemexHome();
+  const config2 = await readConfig(home);
   const store = await getStore({ nested: opts.nested });
-  const result = await organizeCommand(store, opts.since ?? null, opts.json);
+  const result = await organizeCommand(store, opts.since ?? null, opts.json, { config: config2, decision: opts.decision });
   if (result.output) process.stdout.write(result.output + "\n");
   exit(result.exitCode);
 });
@@ -42642,8 +43221,8 @@ program2.command("import [source]").description("Import memories from other tool
 program2.command("doctor").description("Check memex health and configuration").option("--check-collisions", "Check for slug collisions in basename mode").option("--verbose", "Show detailed output for warnings").option("--json", "Output results as JSON for programmatic use").option("--extra-dirs <dirs>", "Comma-separated extra directories for link resolution").action(async (opts) => {
   const home = await resolveMemexHome();
   const config2 = await readConfig(home);
-  const cardsDir = join17(home, "cards");
-  const archiveDir = join17(home, "archive");
+  const cardsDir = join18(home, "cards");
+  const archiveDir = join18(home, "archive");
   if (opts.checkCollisions) {
     const result = await doctorCommand(cardsDir, archiveDir, opts.json);
     if (result.output) process.stdout.write(result.output + "\n");
@@ -42657,8 +43236,8 @@ program2.command("doctor").description("Check memex health and configuration").o
 });
 program2.command("migrate").description("Migrate memex configuration").option("--enable-nested", "Enable nestedSlugs in config").action(async (opts) => {
   const home = await resolveMemexHome();
-  const cardsDir = join17(home, "cards");
-  const archiveDir = join17(home, "archive");
+  const cardsDir = join18(home, "cards");
+  const archiveDir = join18(home, "archive");
   if (opts.enableNested) {
     const result = await migrateCommand(home, cardsDir, archiveDir);
     if (result.output) process.stdout.write(result.output + "\n");

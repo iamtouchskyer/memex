@@ -2,16 +2,35 @@ import { parseFrontmatter, stringifyFrontmatter } from "../lib/parser.js";
 import { CardStore } from "../lib/store.js";
 import { prepareMemexInput } from "../lib/sensitive-input.js";
 import { suggestLinks } from "../lib/suggest-links.js";
+import type { MemexConfig } from "../lib/config.js";
+import {
+  createDecisionProvider,
+  evaluateWriteWithSystemOne,
+  type DecisionProvider,
+  type WriteDecisionResult,
+} from "../lib/systemone.js";
 
 const REQUIRED_FIELDS = ["title", "created", "source"];
+
+export interface WriteOptions {
+  config?: MemexConfig;
+  decision?: boolean;
+  _decisionProvider?: DecisionProvider;
+}
 
 interface WriteResult {
   success: boolean;
   error?: string;
   warnings?: string[];
+  decision?: WriteDecisionResult;
 }
 
-export async function writeCommand(store: CardStore, slug: string, input: string): Promise<WriteResult> {
+export async function writeCommand(
+  store: CardStore,
+  slug: string,
+  input: string,
+  options: WriteOptions = {},
+): Promise<WriteResult> {
   const safety = prepareMemexInput(input, "content");
   if (!safety.ok) return { success: false, error: safety.error };
 
@@ -34,26 +53,64 @@ export async function writeCommand(store: CardStore, slug: string, input: string
   await store.writeCard(slug, output);
 
   const warnings = [...(safety.warnings ?? [])];
-  // New cards are born linkless — this is where orphans come from. Offer cheap
-  // lexical CANDIDATES (zero network) so links grow at write time instead of via
-  // a post-hoc cleanup campaign. Overwrites skip this: existing cards have had
-  // their chance to be linked.
-  //
-  // Suggestions are advisory only. They must never turn a successful, durable
-  // write into a reported failure — the card is already on disk by this point,
-  // so any error while scanning for candidates is swallowed into a soft note.
+  let decisionResult: WriteDecisionResult | undefined;
+
+  const useDecision =
+    options.decision === true ||
+    options.config?.experimental?.systemOneMemory === true ||
+    Boolean(options._decisionProvider);
+
   if (isNew) {
-    try {
-      const suggestions = await suggestLinks(store, slug, data, content);
-      if (suggestions.length > 0) {
-        warnings.push(
-          `Link candidates (only add [[X]] if you can state the relationship): ${suggestions.map((s) => `[[${s}]]`).join(" ")}`,
+    if (useDecision) {
+      try {
+        const provider =
+          options._decisionProvider ??
+          createDecisionProvider({
+            apiKey: options.config?.decisionApiKey,
+            apiKeyPath: options.config?.decisionApiKeyPath,
+            baseUrl: options.config?.decisionBaseUrl,
+            model: options.config?.decisionModel,
+          });
+        decisionResult = await evaluateWriteWithSystemOne(
+          store,
+          provider,
+          slug,
+          data,
+          content,
         );
+        if (decisionResult.action === "update" && decisionResult.updateTargetSlug) {
+          warnings.push(
+            `SystemOne decision: updates existing card [[${decisionResult.updateTargetSlug}]] (confidence: ${decisionResult.actionConfidence.toFixed(2)})`,
+          );
+        } else if (decisionResult.action === "skip_duplicate") {
+          warnings.push(
+            `SystemOne decision: potential duplicate of existing card (confidence: ${decisionResult.actionConfidence.toFixed(2)})`,
+          );
+        }
+        if (decisionResult.recommendedLinks.length > 0) {
+          const linkDesc = decisionResult.recommendedLinks
+            .map((l) => `[[${l.slug}]] (${l.relation}, p=${l.linkProbability.toFixed(2)})`)
+            .join(" ");
+          warnings.push(`Link candidates (SystemOne verified): ${linkDesc}`);
+        }
+      } catch {
+        // Fall back to lexical suggestLinks on error
       }
-    } catch {
-      // Advisory scan failed; the write itself succeeded. Do not fail the command.
+    }
+
+    if (!decisionResult) {
+      try {
+        const suggestions = await suggestLinks(store, slug, data, content);
+        if (suggestions.length > 0) {
+          warnings.push(
+            `Link candidates (only add [[X]] if you can state the relationship): ${suggestions.map((s) => `[[${s}]]`).join(" ")}`,
+          );
+        }
+      } catch {
+        // Advisory scan failed; the write itself succeeded. Do not fail the command.
+      }
     }
   }
 
-  return { success: true, warnings };
+  return { success: true, warnings, decision: decisionResult };
 }

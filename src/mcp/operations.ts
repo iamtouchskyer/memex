@@ -9,6 +9,7 @@ import { linksCommand } from "../commands/links.js";
 import { organizeCommand } from "../commands/organize.js";
 import { stringifyFrontmatter } from "../lib/parser.js";
 import { GitAdapter, readSyncConfig } from "../lib/sync.js";
+import { readConfig } from "../lib/config.js";
 import { flomoPushCommand, parseFlomoHtml } from "../commands/flomo.js";
 import type { FlomoMemo } from "../commands/flomo.js";
 import { formatWarnings } from "../lib/sensitive-input.js";
@@ -46,7 +47,8 @@ export function registerOperations(
       : undefined;
 
     if (query) {
-      const result = await searchCommand(store, query, { limit: 10, filter });
+      const config = await readConfig(home);
+      const result = await searchCommand(store, query, { limit: 10, filter, config, memexHome: home });
       return textResult(result.output || "No cards found.", result.exitCode !== 0);
     }
 
@@ -88,7 +90,8 @@ export function registerOperations(
     if (category) data.category = category;
     const content = stringifyFrontmatter(body, data);
 
-    const result = await writeCommand(store, slug, content);
+    const userConfig = await readConfig(home);
+    const result = await writeCommand(store, slug, content, { config: userConfig });
     if (!result.success) {
       return textResult(result.error!, true);
     }
@@ -130,7 +133,8 @@ export function registerOperations(
   }, async ({ since }) => {
     await hooks.run("pre", "organize");
 
-    const result = await organizeCommand(store, since ?? null);
+    const userConfig = await readConfig(home);
+    const result = await organizeCommand(store, since ?? null, false, { config: userConfig });
 
     await hooks.run("post", "organize");
 
